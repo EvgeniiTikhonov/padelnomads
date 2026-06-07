@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply bg-brand-white text-brand-black font-body text-body;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading font-semibold uppercase tracking-tight;
+  }
+}
+
+@layer components {
+  .heading-display {
+    @apply font-heading font-semibold uppercase text-display tracking-tight text-brand-black;
+  }
+  .heading-section {
+    @apply font-heading font-semibold uppercase text-heading tracking-tight text-brand-black;
+  }
+  .heading-sub {
+    @apply font-heading font-semibold uppercase text-subheading tracking-tight text-brand-black/80;
+  }
+  .body-lg {
+    @apply font-body text-body-lg text-brand-black/90;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center font-heading font-semibold uppercase tracking-wide text-sm px-8 py-4 bg-brand-black text-brand-white transition-colors hover:bg-brand-black/90 focus:outline-none focus:ring-2 focus:ring-brand-black focus:ring-offset-2 focus:ring-offset-brand-white;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center font-heading font-semibold uppercase tracking-wide text-sm px-8 py-4 border-2 border-brand-black text-brand-black bg-transparent transition-colors hover:bg-brand-black hover:text-brand-white focus:outline-none focus:ring-2 focus:ring-brand-black focus:ring-offset-2 focus:ring-offset-brand-white;
+  }
+  .form-label {
+    @apply block font-heading text-sm font-semibold uppercase tracking-wide text-brand-black;
+  }
+  .form-hint {
+    @apply mt-1 font-body text-sm text-brand-black/60;
+  }
+  .form-control {
+    @apply w-full border border-brand-black/20 bg-white px-4 py-3 font-body text-body text-brand-black transition-colors focus:border-brand-black focus:outline-none focus:ring-2 focus:ring-brand-black/20;
+  }
+}

@@ -1,0 +1,198 @@
+// Padel Nomads - Prisma schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  player
+}
+enum ApplicationStatus {
+  pending
+  approved
+  rejected
+}
+enum GameStatus {
+  open
+  ongoing
+  completed
+  cancelled
+}
+enum RegistrationStatus {
+  registered
+  cancelled
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String?   @unique
+  phone          String?   @unique
+  passwordHash   String
+  name           String
+  role           Role      @default(player)
+  emailVerified  Boolean   @default(false)
+  phoneVerified  Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  refreshTokens  RefreshToken[]
+  profile        Profile?
+  applications   Application[]
+  gameRegistrations GameRegistration[]
+  gameResultsAsPlayer GameResultPlayer[]
+  stats          PlayerStats?
+  notifications  NotificationLog[]
+  gamesCreated   Game[]    @relation("GameCreator")
+  gamesReviewed  GameResult[] @relation("RecordedBy")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  email     String?
+  phone     String?
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([email, code])
+  @@index([phone, code])
+}
+
+model Application {
+  id                String            @id @default(cuid())
+  userId            String?
+  user              User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  level             String
+  preferredSide     String
+  proofOfSkillFileUrl String?
+  gender            String?
+  referralSource    String?
+  status            ApplicationStatus @default(pending)
+  reviewedAt        DateTime?
+  reviewedBy        String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model Profile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio               String?
+  photoUrl          String?
+  notificationPrefs Json?
+  completedAt       DateTime?
+  updatedAt         DateTime @updatedAt
+}
+
+model Game {
+  id           String       @id @default(cuid())
+  date         DateTime     @db.Date
+  time         String
+  venue        String
+  price        Decimal      @db.Decimal(10, 2)
+  level        String
+  format       String
+  capacity     Int
+  status       GameStatus   @default(open)
+  createdById  String
+  createdBy    User         @relation("GameCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  registrations GameRegistration[]
+  result       GameResult?
+}
+
+model GameRegistration {
+  id           String             @id @default(cuid())
+  gameId       String
+  game         Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status       RegistrationStatus @default(registered)
+  registeredAt DateTime            @default(now())
+  cancelledAt  DateTime?
+  @@unique([gameId, userId])
+  @@index([gameId])
+  @@index([userId])
+}
+
+model GameResult {
+  id          String   @id @default(cuid())
+  gameId      String   @unique
+  game        Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  recordedById String
+  recordedBy  User     @relation("RecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  recordedAt  DateTime @default(now())
+  scores      Json
+  players     GameResultPlayer[]
+}
+
+model GameResultPlayer {
+  id           String      @id @default(cuid())
+  gameResultId String
+  gameResult   GameResult  @relation(fields: [gameResultId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isWinner     Boolean
+  pointsScored Int         @default(0)
+  @@unique([gameResultId, userId])
+  @@index([userId])
+}
+
+model PlayerStats {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  totalGames     Int      @default(0)
+  wins           Int      @default(0)
+  losses         Int      @default(0)
+  pointsScored   Int      @default(0)
+  pointsConceded Int      @default(0)
+  updatedAt      DateTime @updatedAt
+}
+
+model Sponsor {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  logoUrl     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  promotions  SponsorPromotion[]
+}
+
+model SponsorPromotion {
+  id          String   @id @default(cuid())
+  sponsorId   String
+  sponsor     Sponsor  @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  discount    String?
+  expiryDate  DateTime?
+  createdAt   DateTime @default(now())
+  @@index([sponsorId])
+}
+
+model NotificationLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   String
+  type      String
+  payload   Json?
+  sentAt    DateTime @default(now())
+  @@index([userId])
+}
