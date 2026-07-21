@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import {
-  Search, Ban, Undo2, GitMerge, Upload, Phone, History, Star, Trophy, ShieldAlert, FileUp, Check,
+  Search, Ban, Undo2, GitMerge, Upload, Phone, History, Star, Trophy, ShieldAlert, FileUp, Check, BadgeCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,7 +20,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { KarmaTierBadge, UserStatusBadge } from '@/components/badges';
+import { KarmaTierBadge, UserStatusBadge, VerifiedBadge } from '@/components/badges';
 import { useMockData } from '@/data/provider';
 import {
   LEVEL_LABELS, KARMA_EVENT_LABELS, USER_STATUS_LABELS, formatDateTime, formatDate, initials,
@@ -31,7 +31,7 @@ export default function PlayersPage() {
   const {
     users, phones, participants, games, karmaEvents, activityLogs, banRecords,
     ratingAdjustments, mergeLogs, duplicates, importBatches, importRecords,
-    banPlayer, unbanPlayer, mergeDuplicate, dismissDuplicate, addKarmaEvent,
+    banPlayer, unbanPlayer, mergeDuplicate, dismissDuplicate, addKarmaEvent, setLevelVerified,
   } = useMockData();
 
   const [query, setQuery] = React.useState('');
@@ -116,8 +116,10 @@ export default function PlayersPage() {
                     </Avatar>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{u.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {primary?.phoneNumber ?? 'no phone'} · {LEVEL_LABELS[u.level]} · {u.points} pts
+                      <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                        <span className="truncate">{primary?.phoneNumber ?? 'no phone'} · {LEVEL_LABELS[u.level]}</span>
+                        {u.levelVerified && <VerifiedBadge className="size-3.5" />}
+                        <span className="shrink-0">· {u.points} pts</span>
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
@@ -147,7 +149,7 @@ export default function PlayersPage() {
               <Card key={d.id} className="rounded-2xl py-0 shadow-sm">
                 <CardContent className="space-y-3 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Badge className={`border-none ${d.confidence === 'high' ? 'bg-red-100 text-red-700' : d.confidence === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                    <Badge className={`border-none ${d.confidence === 'high' ? 'bg-red-500/15 text-red-300' : d.confidence === 'medium' ? 'bg-amber-500/15 text-amber-300' : 'bg-white/10 text-white/60'}`}>
                       {d.confidence} confidence
                     </Badge>
                     <p className="text-xs text-muted-foreground">{d.reason}</p>
@@ -215,7 +217,7 @@ export default function PlayersPage() {
                   )}
                   {importStep === 2 && (
                     <div className="space-y-2 text-sm">
-                      {[['Column A — "Name"', 'name'], ['Column B — "WhatsApp"', 'phoneNumber (E.164, default +971)'], ['Column C — "Level"', 'level (enum mapping)'], ['Column D — "Points 2026"', 'points (carried-over rating)']].map(([from, to]) => (
+                      {[['Column A — "Name"', 'name'], ['Column B — "WhatsApp"', 'phoneNumber (E.164, default +971)'], ['Column C — "Level"', 'level (E–A+ letter ladder)'], ['Column D — "Points 2026"', 'points (carried-over rating)']].map(([from, to]) => (
                         <div key={from} className="flex items-center justify-between rounded-lg border px-3 py-2">
                           <span className="text-muted-foreground">{from}</span>
                           <span className="font-medium">→ {to}</span>
@@ -264,7 +266,7 @@ export default function PlayersPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge className={`border-none capitalize ${b.status === 'committed' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                    <Badge className={`border-none capitalize ${b.status === 'committed' ? 'bg-primary/15 text-primary' : 'bg-white/10 text-white/60'}`}>
                       {b.status.replace('_', ' ')}
                     </Badge>
                     {b.status === 'committed' && (
@@ -297,7 +299,7 @@ export default function PlayersPage() {
                 return (
                   <div key={br.id} className="py-3">
                     <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                      <Badge className={`border-none capitalize ${br.action === 'ban' ? 'bg-red-100 text-red-700' : br.action === 'unban' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                      <Badge className={`border-none capitalize ${br.action === 'ban' ? 'bg-red-500/15 text-red-300' : br.action === 'unban' ? 'bg-primary/15 text-primary' : 'bg-white/10 text-white/60'}`}>
                         {br.action.replace(/_/g, ' ')}
                       </Badge>
                       {u?.name ?? br.phoneNumbers.join(', ')}
@@ -322,8 +324,10 @@ export default function PlayersPage() {
                 <SheetTitle className="flex flex-wrap items-center gap-2 font-heading text-lg">
                   {selected.name} <UserStatusBadge status={selected.status} />
                 </SheetTitle>
-                <SheetDescription>
-                  {LEVEL_LABELS[selected.level]} · {selected.points} pts · member since {selected.memberSince ? formatDate(selected.memberSince) : '—'} · source: {selected.source}
+                <SheetDescription className="flex flex-wrap items-center gap-1">
+                  {LEVEL_LABELS[selected.level]}
+                  {selected.levelVerified && <VerifiedBadge className="size-3.5" />}
+                  <span>· {selected.points} pts · member since {selected.memberSince ? formatDate(selected.memberSince) : '—'} · source: {selected.source}</span>
                 </SheetDescription>
               </SheetHeader>
 
@@ -410,6 +414,38 @@ export default function PlayersPage() {
                       </li>
                     ))}
                   </ul>
+                </section>
+
+                {/* Level verification */}
+                <section className="border-t pt-4">
+                  <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+                    <BadgeCheck className="size-3.5 text-blue-500" /> Level verification
+                  </h3>
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
+                    <div className="text-sm">
+                      {selected.levelVerified ? (
+                        <p className="flex items-center gap-1.5 font-medium">
+                          Level {selected.level} verified <VerifiedBadge />
+                        </p>
+                      ) : (
+                        <p className="font-medium">Level {selected.level} — not verified</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {selected.levelVerified
+                          ? `Verified ${selected.levelVerifiedAt ? formatDateTime(selected.levelVerifiedAt) : ''} by Padel Nomads`
+                          : 'The blue verified badge confirms this level was assessed by Padel Nomads.'}
+                      </p>
+                    </div>
+                    {selected.levelVerified ? (
+                      <Button size="sm" variant="outline" onClick={() => setLevelVerified(selected.id, false)}>
+                        Remove verification
+                      </Button>
+                    ) : (
+                      <Button size="sm" className="bg-blue-500 text-white hover:bg-blue-600" onClick={() => setLevelVerified(selected.id, true)}>
+                        <BadgeCheck className="size-3.5" /> Verify level
+                      </Button>
+                    )}
+                  </div>
                 </section>
 
                 {/* Ban controls */}

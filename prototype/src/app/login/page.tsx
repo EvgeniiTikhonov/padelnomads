@@ -37,10 +37,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0d0d0d]/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link href="/"><Logo /></Link>
+          <Link href="/"><Logo markClassName="h-6" /></Link>
           <RoleSwitcher />
         </div>
       </header>
@@ -95,7 +95,7 @@ export default function LoginPage() {
             </div>
 
             <p className="text-center text-xs text-muted-foreground">
-              New here? <Link href="/apply" className="font-medium text-primary hover:underline">Apply to join</Link>
+              New here? <Link href="/apply" className="font-medium text-primary hover:underline">Become a Nomad</Link>
             </p>
           </CardContent>
         </Card>

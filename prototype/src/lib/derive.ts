@@ -47,3 +47,57 @@ export function leaderboard(users: User[], participants: GameParticipant[], game
       ).length,
     }));
 }
+
+export interface LeaderboardDetailedRow {
+  rank: number;
+  user: User;
+  gamesPlayed: number;
+  first: number;
+  second: number;
+  third: number;
+  points: number;
+}
+
+/**
+ * Leaderboard with podium counts and an optional date window (yyyy-mm-dd,
+ * inclusive). Without a window, points = the player's official rating (incl.
+ * manual adjustments); within a window, points earned in those games are summed.
+ */
+export function leaderboardDetailed(
+  users: User[],
+  participants: GameParticipant[],
+  games: Game[],
+  range?: { from?: string; to?: string },
+): LeaderboardDetailedRow[] {
+  const hasRange = Boolean(range?.from || range?.to);
+  const completedIds = new Set(
+    games
+      .filter((g) => g.status === 'completed' && !g.deleted)
+      .filter((g) => (!range?.from || g.date >= range.from) && (!range?.to || g.date <= range.to))
+      .map((g) => g.id),
+  );
+
+  return users
+    .filter((u) => u.role === 'player' && u.status !== 'banned' && u.status !== 'rejected')
+    .map((user) => {
+      const mine = participants.filter(
+        (p) => p.userId === user.id && completedIds.has(p.gameId) && p.status !== 'cancelled',
+      );
+      return {
+        rank: 0,
+        user,
+        gamesPlayed: mine.length,
+        first: mine.filter((p) => p.position === 1).length,
+        second: mine.filter((p) => p.position === 2).length,
+        third: mine.filter((p) => p.position === 3).length,
+        points: hasRange
+          ? mine.reduce((s, p) => s + (p.pointsAwarded ?? 0), 0)
+          : user.points,
+      };
+    })
+    .sort((a, b) =>
+      b.points - a.points ||
+      b.first - a.first || b.second - a.second || b.third - a.third ||
+      b.gamesPlayed - a.gamesPlayed)
+    .map((row, i) => ({ ...row, rank: i + 1 }));
+}

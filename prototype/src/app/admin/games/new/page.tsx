@@ -14,7 +14,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { useMockData } from '@/data/provider';
-import { FORMAT_LABELS, LEVEL_LABELS } from '@/lib/format';
+import { FORMAT_LABELS, LEVELS, LEVEL_LABELS } from '@/lib/format';
 import type { Game, GameFormat, Level } from '@/types';
 
 const VENUES = ['Padel Point, Al Quoz', 'Matcha Club, Al Quoz', 'The Padel Lab, JLT', 'Real Padel Club, Al Barsha', 'ISD Sports City'];
@@ -124,7 +124,7 @@ export default function CreateGamePage() {
                 <Select value={level} onValueChange={(v) => setLevel(v as Game['level'])}>
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {(['mixed', 'beginner', 'intermediate', 'advanced', 'professional'] as (Level | 'mixed')[]).map((l) => (
+                    {(['mixed', ...LEVELS] as (Level | 'mixed')[]).map((l) => (
                       <SelectItem key={l} value={l}>{LEVEL_LABELS[l]}</SelectItem>
                     ))}
                   </SelectContent>

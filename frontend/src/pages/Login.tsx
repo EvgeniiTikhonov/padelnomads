@@ -87,7 +87,7 @@ export default function Login() {
 
       <div className="mt-10">
         <Link to="/join" className="btn-secondary">
-          Apply to join
+          Become a Nomad
         </Link>
       </div>
     </div>

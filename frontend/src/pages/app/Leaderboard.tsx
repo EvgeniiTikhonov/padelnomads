@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useAuth } from '@/lib/auth';
-import { computeLeaderboard, useStore, LEVELS } from '@/lib/store';
+import { computeLeaderboard, useStore, LEVELS, LEVEL_LABELS } from '@/lib/store';
 import { PageHeader, Card, Badge } from '@/components/ui';
 
 export default function Leaderboard() {
@@ -39,7 +39,7 @@ export default function Leaderboard() {
         </FilterChip>
         {LEVELS.map((l) => (
           <FilterChip key={l} active={level === l} onClick={() => setLevel(l)}>
-            {l}
+            {LEVEL_LABELS[l]}
           </FilterChip>
         ))}
       </div>

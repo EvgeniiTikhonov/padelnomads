@@ -14,7 +14,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { KarmaTierBadge } from '@/components/badges';
+import { KarmaTierBadge, VerifiedBadge } from '@/components/badges';
 import { useMockData } from '@/data/provider';
 import { leaderboard, upcomingGamesNextTwoWeeks } from '@/lib/derive';
 import {
@@ -75,7 +75,10 @@ export default function ProfilePage() {
             <h1 className="font-heading text-xl font-bold">{currentUser.name}</h1>
             <p className="text-sm text-muted-foreground">{currentUser.email}</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
-              <Badge variant="secondary">{LEVEL_LABELS[currentUser.level]}</Badge>
+              <Badge variant="secondary" className="gap-1">
+                {LEVEL_LABELS[currentUser.level]}
+                {currentUser.levelVerified && <VerifiedBadge className="size-3.5" />}
+              </Badge>
               <Badge variant="secondary">Side: {SIDE_LABELS[currentUser.preferredSide]}</Badge>
               {currentUser.gender && <Badge variant="outline">{GENDER_LABELS[currentUser.gender]}</Badge>}
               <Badge variant="outline" className="gap-1">

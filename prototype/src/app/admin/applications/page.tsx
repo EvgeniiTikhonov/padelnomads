@@ -24,9 +24,9 @@ import { LEVEL_LABELS, SIDE_LABELS, GENDER_LABELS, formatDateTime } from '@/lib/
 import type { Application, ApplicationStatus } from '@/types';
 
 const STATUS_TONE: Record<ApplicationStatus, string> = {
-  pending: 'bg-amber-100 text-amber-700',
-  approved: 'bg-green-100 text-green-700',
-  rejected: 'bg-slate-100 text-slate-600',
+  pending: 'bg-amber-500/15 text-amber-300',
+  approved: 'bg-primary/15 text-primary',
+  rejected: 'bg-white/10 text-white/60',
 };
 
 export default function ApplicationsPage() {

@@ -27,7 +27,7 @@ export default function Landing() {
         </p>
         <div className="mt-10 flex flex-wrap justify-center gap-4">
           <Link to="/join" className="btn-primary">
-            Apply to join
+            Become a Nomad
           </Link>
           <Link to="/login" className="btn-secondary">
             Log in
@@ -82,7 +82,7 @@ export default function Landing() {
               to="/join"
               className="inline-flex items-center justify-center bg-brand-white px-8 py-4 font-heading text-sm font-semibold uppercase tracking-wide text-brand-black transition-colors hover:bg-brand-white/90"
             >
-              Apply to join
+              Become a Nomad
             </Link>
           </div>
         </Card>

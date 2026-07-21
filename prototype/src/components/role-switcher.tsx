@@ -27,7 +27,7 @@ const PRESETS: Preset[] = [
   { key: 'admin', label: 'Admin', role: 'admin', appStatus: 'approved', href: '/admin' },
 ];
 
-export function RoleSwitcher() {
+export function RoleSwitcher({ tone = 'dark' }: { tone?: 'light' | 'dark' }) {
   const { session, setViewRole, setApplicationStatus, currentUser } = useMockData();
   const router = useRouter();
 
@@ -39,13 +39,21 @@ export function RoleSwitcher() {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="outline" size="sm" className="gap-1.5 border-dashed text-xs font-medium" />
+          <Button
+            variant="outline"
+            size="sm"
+            className={
+              tone === 'dark'
+                ? 'gap-1.5 border-white/20 bg-white/5 text-xs font-medium text-white/70 hover:bg-white/10 hover:text-white'
+                : 'gap-1.5 border-dashed text-xs font-medium'
+            }
+          />
         }
       >
-        <FlaskConical className="size-3.5 text-primary" />
-        <span className="hidden sm:inline">Prototype: view as…</span>
-        <span className="font-semibold">{active.label}</span>
-        <ChevronDown className="size-3" />
+        <FlaskConical className={tone === 'dark' ? 'size-3.5 text-[#c6e03a]' : 'size-3.5 text-primary'} />
+        <span className="hidden lg:inline">View as</span>
+        <span className="font-semibold">{active.label.split('—')[0].trim()}</span>
+        <ChevronDown className="size-3 opacity-60" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuGroup>

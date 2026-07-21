@@ -71,7 +71,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            Webhook: <Badge className="border-none bg-green-100 text-green-700">verified</Badge>
+            Webhook: <Badge className="border-none bg-primary/15 text-primary">verified</Badge>
             Default reminders: <Badge variant="outline">24h + 2h</Badge>
           </div>
         </CardContent>

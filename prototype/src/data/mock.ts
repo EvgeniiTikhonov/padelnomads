@@ -1,11 +1,13 @@
 import type {
-  User, PlayerPhoneNumber, Application, Game, GameParticipant, Offer,
+  User, PlayerPhoneNumber, Application, Game, GameParticipant, GameMatch, GameTeam, Offer,
   AppNotification, KarmaEvent, MessageTemplate, OutboundMessage, InboundMessage,
   ImportBatch, ImportRecord, PlayerMergeLog, BanRecord, RatingAdjustment, ActivityLog,
   Level, PreferredSide, Gender, UserStatus, GameFormat, GameStatus,
   ParticipantStatus, KarmaEventType,
 } from '@/types';
 import { karmaTierFor } from '@/lib/format';
+import { FORMAT_CONFIG } from '@/lib/gameFormats';
+import { computeStandings, generateNextRoundMatches } from '@/lib/scoring';
 
 // ---- date helpers (all seed dates are relative to "now" so the demo stays fresh) ----
 function daysFromNow(days: number): Date {
@@ -27,53 +29,54 @@ interface P {
   id: string; name: string; level: Level; side: PreferredSide; gender?: Gender;
   points: number; karma: number; status?: UserStatus; email?: string;
   source?: 'signup' | 'import'; marketing?: boolean; memberDays?: number;
+  verified?: boolean;   // level verified by Padel Nomads
 }
 const P_LIST: P[] = [
-  { id: 'u1', name: 'Alex Ivanov', level: 'intermediate', side: 'right', gender: 'male', points: 342, karma: 88, email: 'alex.ivanov@example.com', marketing: true, memberDays: 410 },
-  { id: 'u2', name: 'Maria Petrova', level: 'advanced', side: 'left', gender: 'female', points: 512, karma: 100, email: 'maria.p@example.com', marketing: true, memberDays: 620 },
-  { id: 'u3', name: 'James Carter', level: 'advanced', side: 'both', gender: 'male', points: 486, karma: 95, email: 'jcarter@example.com', memberDays: 540 },
-  { id: 'u4', name: 'Sofia Rossi', level: 'intermediate', side: 'right', gender: 'female', points: 298, karma: 76, email: 'sofia.rossi@example.com', marketing: true, memberDays: 300 },
-  { id: 'u5', name: 'Daniel Kim', level: 'professional', side: 'left', gender: 'male', points: 640, karma: 92, email: 'dkim@example.com', memberDays: 700 },
-  { id: 'u6', name: 'Laura Sanchez', level: 'beginner', side: 'both', gender: 'female', points: 112, karma: 100, email: 'laura.s@example.com', marketing: true, memberDays: 90 },
-  { id: 'u7', name: 'Omar Haddad', level: 'intermediate', side: 'left', gender: 'male', points: 275, karma: 64, email: 'omar.h@example.com', memberDays: 250 },
-  { id: 'u8', name: 'Emma Wilson', level: 'advanced', side: 'right', gender: 'female', points: 455, karma: 82, email: 'emma.w@example.com', marketing: true, memberDays: 480 },
-  { id: 'u9', name: 'Lucas Meyer', level: 'intermediate', side: 'both', gender: 'male', points: 310, karma: 71, email: 'lucas.m@example.com', memberDays: 330 },
-  { id: 'u10', name: 'Anna Kowalska', level: 'beginner', side: 'right', gender: 'female', points: 95, karma: 97, email: 'anna.k@example.com', memberDays: 60 },
-  { id: 'u11', name: 'Pavel Novak', level: 'advanced', side: 'left', gender: 'male', points: 470, karma: 58, email: 'pavel.n@example.com', memberDays: 500 },
-  { id: 'u12', name: 'Chloe Dubois', level: 'intermediate', side: 'right', gender: 'female', points: 288, karma: 90, email: 'chloe.d@example.com', marketing: true, memberDays: 280 },
-  { id: 'u13', name: 'Marco Bianchi', level: 'professional', side: 'both', gender: 'male', points: 605, karma: 85, email: 'marco.b@example.com', memberDays: 650 },
-  { id: 'u14', name: 'Yuki Tanaka', level: 'intermediate', side: 'left', gender: 'female', points: 265, karma: 100, email: 'yuki.t@example.com', memberDays: 200 },
-  { id: 'u15', name: 'Sergey Volkov', level: 'advanced', side: 'right', gender: 'male', points: 430, karma: 45, email: 'sergey.v@example.com', memberDays: 420 },
-  { id: 'u16', name: 'Isabella Ferrari', level: 'beginner', side: 'both', gender: 'female', points: 130, karma: 93, email: 'isa.f@example.com', marketing: true, memberDays: 120 },
-  { id: 'u17', name: 'Tom Becker', level: 'intermediate', side: 'left', gender: 'male', points: 320, karma: 38, email: 'tom.b@example.com', memberDays: 350 },
-  { id: 'u18', name: 'Nadia Rahman', level: 'advanced', side: 'right', gender: 'female', points: 495, karma: 100, email: 'nadia.r@example.com', marketing: true, memberDays: 560 },
-  { id: 'u19', name: 'Carlos Mendes', level: 'intermediate', side: 'both', gender: 'male', points: 240, karma: 79, email: 'carlos.m@example.com', memberDays: 220 },
-  { id: 'u20', name: 'Elena Georgiou', level: 'beginner', side: 'left', gender: 'female', points: 88, karma: 96, email: 'elena.g@example.com', memberDays: 45 },
-  { id: 'u21', name: 'Viktor Petrov', level: 'advanced', side: 'right', gender: 'male', points: 448, karma: 68, email: 'viktor.p@example.com', memberDays: 460 },
-  { id: 'u22', name: 'Hannah Schmidt', level: 'intermediate', side: 'both', gender: 'female', points: 302, karma: 87, email: 'hannah.s@example.com', marketing: true, memberDays: 310 },
-  { id: 'u23', name: 'Rafael Costa', level: 'professional', side: 'left', gender: 'male', points: 588, karma: 91, email: 'rafael.c@example.com', memberDays: 610 },
-  { id: 'u24', name: 'Aisha Al Maktoum', level: 'intermediate', side: 'right', gender: 'female', points: 270, karma: 100, email: 'aisha.m@example.com', marketing: true, memberDays: 180 },
-  { id: 'u25', name: 'Dmitry Sokolov', level: 'advanced', side: 'both', gender: 'male', points: 415, karma: 53, email: 'dmitry.s@example.com', memberDays: 390 },
-  { id: 'u26', name: 'Julia Lindqvist', level: 'beginner', side: 'left', gender: 'female', points: 105, karma: 94, email: 'julia.l@example.com', memberDays: 75 },
-  { id: 'u27', name: 'Ahmed Zayed', level: 'intermediate', side: 'right', gender: 'male', points: 255, karma: 73, email: 'ahmed.z@example.com', memberDays: 240 },
-  { id: 'u28', name: 'Olivia Brown', level: 'advanced', side: 'left', gender: 'female', points: 462, karma: 89, email: 'olivia.b@example.com', marketing: true, memberDays: 520 },
-  { id: 'u29', name: 'Nikolai Orlov', level: 'intermediate', side: 'both', gender: 'male', points: 290, karma: 61, email: 'nikolai.o@example.com', memberDays: 260 },
-  { id: 'u30', name: 'Fatima Hassan', level: 'beginner', side: 'right', gender: 'female', points: 75, karma: 98, email: 'fatima.h@example.com', memberDays: 30 },
-  { id: 'u31', name: 'Piotr Zielinski', level: 'advanced', side: 'left', gender: 'male', points: 402, karma: 77, email: 'piotr.z@example.com', memberDays: 370 },
-  { id: 'u32', name: 'Grace Taylor', level: 'intermediate', side: 'both', gender: 'female', points: 315, karma: 84, email: 'grace.t@example.com', marketing: true, memberDays: 340 },
+  { id: 'u1', name: 'Alex Ivanov', level: 'C+', side: 'right', gender: 'male', points: 342, karma: 88, email: 'alex.ivanov@example.com', marketing: true, memberDays: 410, verified: true },
+  { id: 'u2', name: 'Maria Petrova', level: 'B+', side: 'left', gender: 'female', points: 512, karma: 100, email: 'maria.p@example.com', marketing: true, memberDays: 620, verified: true },
+  { id: 'u3', name: 'James Carter', level: 'B', side: 'both', gender: 'male', points: 486, karma: 95, email: 'jcarter@example.com', memberDays: 540 },
+  { id: 'u4', name: 'Sofia Rossi', level: 'C Strong', side: 'right', gender: 'female', points: 298, karma: 76, email: 'sofia.rossi@example.com', marketing: true, memberDays: 300 },
+  { id: 'u5', name: 'Daniel Kim', level: 'A+', side: 'left', gender: 'male', points: 640, karma: 92, email: 'dkim@example.com', memberDays: 700, verified: true },
+  { id: 'u6', name: 'Laura Sanchez', level: 'D', side: 'both', gender: 'female', points: 112, karma: 100, email: 'laura.s@example.com', marketing: true, memberDays: 90 },
+  { id: 'u7', name: 'Omar Haddad', level: 'C', side: 'left', gender: 'male', points: 275, karma: 64, email: 'omar.h@example.com', memberDays: 250 },
+  { id: 'u8', name: 'Emma Wilson', level: 'B+', side: 'right', gender: 'female', points: 455, karma: 82, email: 'emma.w@example.com', marketing: true, memberDays: 480 },
+  { id: 'u9', name: 'Lucas Meyer', level: 'C+', side: 'both', gender: 'male', points: 310, karma: 71, email: 'lucas.m@example.com', memberDays: 330 },
+  { id: 'u10', name: 'Anna Kowalska', level: 'D+', side: 'right', gender: 'female', points: 95, karma: 97, email: 'anna.k@example.com', memberDays: 60 },
+  { id: 'u11', name: 'Pavel Novak', level: 'B', side: 'left', gender: 'male', points: 470, karma: 58, email: 'pavel.n@example.com', memberDays: 500 },
+  { id: 'u12', name: 'Chloe Dubois', level: 'C', side: 'right', gender: 'female', points: 288, karma: 90, email: 'chloe.d@example.com', marketing: true, memberDays: 280 },
+  { id: 'u13', name: 'Marco Bianchi', level: 'A', side: 'both', gender: 'male', points: 605, karma: 85, email: 'marco.b@example.com', memberDays: 650, verified: true },
+  { id: 'u14', name: 'Yuki Tanaka', level: 'C', side: 'left', gender: 'female', points: 265, karma: 100, email: 'yuki.t@example.com', memberDays: 200 },
+  { id: 'u15', name: 'Sergey Volkov', level: 'B', side: 'right', gender: 'male', points: 430, karma: 45, email: 'sergey.v@example.com', memberDays: 420 },
+  { id: 'u16', name: 'Isabella Ferrari', level: 'D', side: 'both', gender: 'female', points: 130, karma: 93, email: 'isa.f@example.com', marketing: true, memberDays: 120 },
+  { id: 'u17', name: 'Tom Becker', level: 'C', side: 'left', gender: 'male', points: 320, karma: 38, email: 'tom.b@example.com', memberDays: 350 },
+  { id: 'u18', name: 'Nadia Rahman', level: 'B+', side: 'right', gender: 'female', points: 495, karma: 100, email: 'nadia.r@example.com', marketing: true, memberDays: 560, verified: true },
+  { id: 'u19', name: 'Carlos Mendes', level: 'C', side: 'both', gender: 'male', points: 240, karma: 79, email: 'carlos.m@example.com', memberDays: 220 },
+  { id: 'u20', name: 'Elena Georgiou', level: 'E', side: 'left', gender: 'female', points: 88, karma: 96, email: 'elena.g@example.com', memberDays: 45 },
+  { id: 'u21', name: 'Viktor Petrov', level: 'B', side: 'right', gender: 'male', points: 448, karma: 68, email: 'viktor.p@example.com', memberDays: 460 },
+  { id: 'u22', name: 'Hannah Schmidt', level: 'C', side: 'both', gender: 'female', points: 302, karma: 87, email: 'hannah.s@example.com', marketing: true, memberDays: 310 },
+  { id: 'u23', name: 'Rafael Costa', level: 'A+', side: 'left', gender: 'male', points: 588, karma: 91, email: 'rafael.c@example.com', memberDays: 610, verified: true },
+  { id: 'u24', name: 'Aisha Al Maktoum', level: 'C', side: 'right', gender: 'female', points: 270, karma: 100, email: 'aisha.m@example.com', marketing: true, memberDays: 180 },
+  { id: 'u25', name: 'Dmitry Sokolov', level: 'B', side: 'both', gender: 'male', points: 415, karma: 53, email: 'dmitry.s@example.com', memberDays: 390 },
+  { id: 'u26', name: 'Julia Lindqvist', level: 'E', side: 'left', gender: 'female', points: 105, karma: 94, email: 'julia.l@example.com', memberDays: 75 },
+  { id: 'u27', name: 'Ahmed Zayed', level: 'C', side: 'right', gender: 'male', points: 255, karma: 73, email: 'ahmed.z@example.com', memberDays: 240 },
+  { id: 'u28', name: 'Olivia Brown', level: 'B', side: 'left', gender: 'female', points: 462, karma: 89, email: 'olivia.b@example.com', marketing: true, memberDays: 520, verified: true },
+  { id: 'u29', name: 'Nikolai Orlov', level: 'C', side: 'both', gender: 'male', points: 290, karma: 61, email: 'nikolai.o@example.com', memberDays: 260 },
+  { id: 'u30', name: 'Fatima Hassan', level: 'E', side: 'right', gender: 'female', points: 75, karma: 98, email: 'fatima.h@example.com', memberDays: 30 },
+  { id: 'u31', name: 'Piotr Zielinski', level: 'B', side: 'left', gender: 'male', points: 402, karma: 77, email: 'piotr.z@example.com', memberDays: 370 },
+  { id: 'u32', name: 'Grace Taylor', level: 'C Strong', side: 'both', gender: 'female', points: 315, karma: 84, email: 'grace.t@example.com', marketing: true, memberDays: 340 },
   // Restricted tier (karma 1–19)
-  { id: 'u33', name: 'Igor Baranov', level: 'intermediate', side: 'right', gender: 'male', points: 232, karma: 14, email: 'igor.b@example.com', memberDays: 290 },
-  { id: 'u34', name: 'Sara Nilsen', level: 'advanced', side: 'left', gender: 'female', points: 388, karma: 8, email: 'sara.n@example.com', memberDays: 430 },
+  { id: 'u33', name: 'Igor Baranov', level: 'C', side: 'right', gender: 'male', points: 232, karma: 14, email: 'igor.b@example.com', memberDays: 290 },
+  { id: 'u34', name: 'Sara Nilsen', level: 'B', side: 'left', gender: 'female', points: 388, karma: 8, email: 'sara.n@example.com', memberDays: 430 },
   // Suspended tier (karma <= 0)
-  { id: 'u35', name: 'Max Kuznetsov', level: 'intermediate', side: 'both', gender: 'male', points: 198, karma: -10, email: 'max.k@example.com', memberDays: 320 },
+  { id: 'u35', name: 'Max Kuznetsov', level: 'C', side: 'both', gender: 'male', points: 198, karma: -10, email: 'max.k@example.com', memberDays: 320 },
   // Banned
-  { id: 'u36', name: 'Boris Lebedev', level: 'advanced', side: 'right', gender: 'male', points: 356, karma: -35, status: 'banned', email: 'boris.l@example.com', memberDays: 480 },
+  { id: 'u36', name: 'Boris Lebedev', level: 'B', side: 'right', gender: 'male', points: 356, karma: -35, status: 'banned', email: 'boris.l@example.com', memberDays: 480 },
   // Imported shell profiles
-  { id: 'u37', name: 'Khalid Mansour', level: 'intermediate', side: 'left', gender: 'male', points: 210, karma: 100, status: 'imported', source: 'import', memberDays: 0 },
-  { id: 'u38', name: 'Rita Fernandes', level: 'beginner', side: 'both', gender: 'female', points: 60, karma: 100, status: 'imported', source: 'import', memberDays: 0 },
+  { id: 'u37', name: 'Khalid Mansour', level: 'C', side: 'left', gender: 'male', points: 210, karma: 100, status: 'imported', source: 'import', memberDays: 0 },
+  { id: 'u38', name: 'Rita Fernandes', level: 'D', side: 'both', gender: 'female', points: 60, karma: 100, status: 'imported', source: 'import', memberDays: 0 },
   // Duplicate pair (same person, two profiles)
-  { id: 'u39', name: 'Katerina Smirnova', level: 'intermediate', side: 'right', gender: 'female', points: 248, karma: 92, email: 'kat.smirnova@example.com', memberDays: 210 },
-  { id: 'u40', name: 'Kate Smirnova', level: 'intermediate', side: 'right', gender: 'female', points: 36, karma: 100, status: 'imported', source: 'import', memberDays: 0 },
+  { id: 'u39', name: 'Katerina Smirnova', level: 'C', side: 'right', gender: 'female', points: 248, karma: 92, email: 'kat.smirnova@example.com', memberDays: 210 },
+  { id: 'u40', name: 'Kate Smirnova', level: 'C', side: 'right', gender: 'female', points: 36, karma: 100, status: 'imported', source: 'import', memberDays: 0 },
 ];
 
 function mkUser(p: P): User {
@@ -88,6 +91,9 @@ function mkUser(p: P): User {
     whatsappMarketingOptInAt: p.marketing ? created : undefined,
     source: p.source ?? 'signup',
     importBatchId: p.source === 'import' ? 'imp1' : undefined,
+    levelVerified: p.verified ?? false,
+    levelVerifiedAt: p.verified ? iso(-30) : undefined,
+    levelVerifiedBy: p.verified ? 'admin1' : undefined,
     karmaBalance: p.karma, karmaTier: karmaTierFor(p.karma),
     points: p.points,
     memberSince: (p.memberDays ?? 0) > 0 ? dateStr(-(p.memberDays ?? 100)) : undefined,
@@ -97,7 +103,7 @@ function mkUser(p: P): User {
 
 const ADMIN: User = {
   id: 'admin1', name: 'Dima Organizer', email: 'admin@padelnomads.com',
-  role: 'admin', status: 'approved', level: 'advanced', preferredSide: 'both',
+  role: 'admin', status: 'approved', level: 'B', preferredSide: 'both',
   whatsappOptIn: true, whatsappMarketingOptIn: false, source: 'signup',
   karmaBalance: 100, karmaTier: 'good', points: 0,
   memberSince: dateStr(-800), createdAt: iso(-800), updatedAt: iso(-1),
@@ -129,21 +135,27 @@ interface G {
   status: GameStatus; desc?: string;
 }
 const G_LIST: G[] = [
-  // upcoming (next 2 weeks)
-  { id: 'g1', title: 'Tuesday Americano', format: 'americano', venue: 'Padel Point, Al Quoz', day: 1, start: '19:00', end: '21:00', courts: 3, capacity: 12, level: 'intermediate', price: 90, status: 'upcoming', desc: 'Classic weekly Americano. Every point counts — rotating partners, all games to 16.' },
-  { id: 'g2', title: 'Ladies Court of Queens', format: 'court_of_queens', venue: 'Matcha Club, Al Quoz', day: 3, start: '18:30', end: '20:30', courts: 2, capacity: 8, level: 'mixed', gender: 'female', price: 100, status: 'upcoming', desc: 'Ladies-only ladder night. Win to move up a court, hold the queen court to take the crown.' },
-  { id: 'g3', title: 'Advanced King of the Court', format: 'king_of_the_court', venue: 'The Padel Lab, JLT', day: 5, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'advanced', price: 110, status: 'upcoming', desc: 'High-intensity KOTC for advanced players. Winners stay on the king court.' },
+  // upcoming / live — next 2 weeks
+  { id: 'g6', title: 'Monday Night Fixed Pairs', format: 'fixed_pairs', venue: 'Padel Point, Al Quoz', day: 0, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'C', price: 90, status: 'live', desc: 'Bring your partner or get matched. Fixed pairs round-robin.' },
+  { id: 'g1', title: 'Tuesday Mexicano', format: 'team_mexicano', venue: 'Padel Point, Al Quoz', day: 1, start: '19:00', end: '21:00', courts: 3, capacity: 12, level: 'C', price: 90, status: 'upcoming', desc: 'Classic weekly Americano. Every point counts — rotating partners, all games to 16.' },
+  { id: 'g13', title: 'E / D Intro Session', format: 'social_shuffle', venue: 'Real Padel Club, Al Barsha', day: 2, start: '18:00', end: '19:30', courts: 2, capacity: 8, level: 'E', price: 60, status: 'upcoming', desc: 'Gentle intro session for Entry players. Coaches on court, focus on rallies and basics.' },
+  { id: 'g2', title: 'Ladies Court of Queens', format: 'king_queen_of_the_court', venue: 'Matcha Club, Al Quoz', day: 3, start: '18:30', end: '20:30', courts: 2, capacity: 8, level: 'mixed', gender: 'female', price: 100, status: 'upcoming', desc: 'Ladies-only ladder night. Win to move up a court, hold the queen court to take the crown.' },
+  { id: 'g14', title: 'D+ Social Shuffle', format: 'social_shuffle', venue: 'Matcha Club, Al Quoz', day: 4, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'D+', price: 80, status: 'upcoming', desc: 'Social night for D+ players building consistency and net awareness.' },
+  { id: 'g3', title: 'B+ King of the Court', format: 'king_of_the_court', venue: 'The Padel Lab, JLT', day: 5, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'B+', price: 110, status: 'upcoming', desc: 'High-intensity KOTC for B+ players. Winners stay on the king court.' },
+  { id: 'g15', title: 'C+ Friday Mexicano', format: 'team_mexicano', venue: 'Padel Point, Al Quoz', day: 6, start: '19:30', end: '21:30', courts: 3, capacity: 12, level: 'C+', price: 95, status: 'upcoming', desc: 'Friday Americano for C+ — solid pace, rotating partners.' },
+  { id: 'g16', title: 'C Strong Clinic', format: 'social_shuffle', venue: 'The Padel Lab, JLT', day: 7, start: '09:00', end: '10:30', courts: 2, capacity: 8, level: 'C Strong', price: 120, status: 'upcoming', desc: 'Morning clinic focused on bandeja, vibora, and transition play.' },
   { id: 'g4', title: 'Sunday Social Shuffle', format: 'social_shuffle', venue: 'Real Padel Club, Al Barsha', day: 8, start: '10:00', end: '12:00', courts: 4, capacity: 16, level: 'mixed', price: 80, status: 'upcoming', desc: 'Relaxed Sunday morning shuffle. All levels welcome, partners rotate every round.' },
+  { id: 'g17', title: 'B Mexicano', format: 'team_mexicano', venue: 'ISD Sports City', day: 9, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'B', price: 110, status: 'upcoming', desc: 'Fast-paced Americano for B players.' },
+  { id: 'g18', title: 'A / A+ Night', format: 'king_of_the_court', venue: 'The Padel Lab, JLT', day: 11, start: '21:00', end: '23:00', courts: 2, capacity: 8, level: 'A', price: 130, status: 'upcoming', desc: 'Late session for A and A+ — structured points, full intensity.' },
   { id: 'g5', title: 'Nomads Mini-Tournament', format: 'mini_tournament', venue: 'ISD Sports City', day: 12, start: '17:00', end: '21:00', courts: 4, capacity: 16, level: 'mixed', price: 140, status: 'upcoming', desc: 'Monthly bracket tournament with group stage + knockouts. Prizes from our partners.' },
-  // live (today)
-  { id: 'g6', title: 'Monday Night Fixed Pairs', format: 'fixed_pairs', venue: 'Padel Point, Al Quoz', day: 0, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'intermediate', price: 90, status: 'live', desc: 'Bring your partner or get matched. Fixed pairs round-robin.' },
+  { id: 'g19', title: 'D Midweek Fixed Pairs', format: 'fixed_pairs', venue: 'Padel Point, Al Quoz', day: 13, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'D', price: 85, status: 'upcoming', desc: 'Fixed pairs for D level — learn positioning with a steady partner.' },
   // past
-  { id: 'g7', title: 'Thursday Americano', format: 'americano', venue: 'Padel Point, Al Quoz', day: -2, start: '19:00', end: '21:00', courts: 3, capacity: 12, level: 'intermediate', price: 90, status: 'completed' },
+  { id: 'g7', title: 'Thursday Mexicano', format: 'team_mexicano', venue: 'Padel Point, Al Quoz', day: -2, start: '19:00', end: '21:00', courts: 3, capacity: 12, level: 'C', price: 90, status: 'completed' },
   { id: 'g8', title: 'King & Queen Night', format: 'king_queen_of_the_court', venue: 'Matcha Club, Al Quoz', day: -5, start: '18:00', end: '20:00', courts: 2, capacity: 8, level: 'mixed', price: 100, status: 'completed' },
   { id: 'g9', title: 'Weekend Social Shuffle', format: 'social_shuffle', venue: 'Real Padel Club, Al Barsha', day: -9, start: '10:00', end: '12:00', courts: 4, capacity: 16, level: 'mixed', price: 80, status: 'completed' },
-  { id: 'g10', title: 'Advanced Americano', format: 'americano', venue: 'The Padel Lab, JLT', day: -14, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'advanced', price: 110, status: 'completed' },
+  { id: 'g10', title: 'B Mexicano', format: 'team_mexicano', venue: 'The Padel Lab, JLT', day: -14, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'B', price: 110, status: 'completed' },
   { id: 'g11', title: 'July Mini-Tournament', format: 'mini_tournament', venue: 'ISD Sports City', day: -20, start: '17:00', end: '21:00', courts: 4, capacity: 16, level: 'mixed', price: 140, status: 'completed' },
-  { id: 'g12', title: 'Beginners Social', format: 'social_shuffle', venue: 'Real Padel Club, Al Barsha', day: -27, start: '09:00', end: '11:00', courts: 2, capacity: 8, level: 'beginner', price: 70, status: 'cancelled' },
+  { id: 'g12', title: 'E Entry Social', format: 'social_shuffle', venue: 'Real Padel Club, Al Barsha', day: -27, start: '09:00', end: '11:00', courts: 2, capacity: 8, level: 'E', price: 70, status: 'cancelled' },
 ];
 
 export const seedGames: Game[] = G_LIST.map((g) => ({
@@ -199,7 +211,7 @@ export const seedParticipants: GameParticipant[] = [
   part('g2', 'u24', 'confirmed', { confirmedAt: iso(-1) }),
   part('g2', 'u28', 'registered', { confirmationRequestedAt: iso(-1) }),
   part('g2', 'u12', 'confirmed', { confirmedAt: iso(-2) }),
-  // g3 Advanced KOTC (u1 confirmed)
+  // g3 B+ KOTC (u1 confirmed)
   part('g3', 'u3', 'confirmed', { confirmedAt: iso(-1) }),
   part('g3', 'u5', 'confirmed', { confirmedAt: iso(-2) }),
   part('g3', 'u11', 'registered', { confirmationRequestedAt: iso(-1) }),
@@ -239,16 +251,87 @@ export const seedParticipants: GameParticipant[] = [
   ...pastRoster('g11', ['u1', 'u2', 'u3', 'u5', 'u8', 'u11', 'u13', 'u15', 'u18', 'u21', 'u23', 'u28', 'u31', 'u25', 'u9', 'u17'], -20),
 ];
 
+// Detailed historical scoring data for completed games. New game results are
+// written through the provider; these records keep the seeded history equally
+// useful in public player profiles.
+export const seedGameTeams: GameTeam[] = [];
+export const seedGameMatches: GameMatch[] = [];
+
+for (const game of seedGames.filter((g) => g.status === 'completed')) {
+  const roster = seedParticipants.filter(
+    (p) => p.gameId === game.id && !['cancelled', 'waitlisted'].includes(p.status),
+  );
+  const gameTeams: GameTeam[] = [];
+  for (let i = 0; i < roster.length; i += 2) {
+    const members = roster.slice(i, i + 2);
+    if (members.length < 2) break;
+    const team: GameTeam = {
+      id: `seed-${game.id}-t${gameTeams.length + 1}`,
+      gameId: game.id,
+      name: `Team ${gameTeams.length + 1}`,
+      court: Math.floor(gameTeams.length / 2) + 1,
+      playerIds: members.map((p) => p.userId),
+    };
+    gameTeams.push(team);
+    members.forEach((p) => { p.teamId = team.id; });
+  }
+  seedGameTeams.push(...gameTeams);
+
+  let generatedMatchId = 0;
+  let roundMatches: GameMatch[] = [];
+  for (let i = 0; i < gameTeams.length; i += 2) {
+    if (!gameTeams[i + 1]) break;
+    roundMatches.push({
+      id: `seed-${game.id}-r1-m${roundMatches.length + 1}`,
+      gameId: game.id,
+      round: 0,
+      court: Math.floor(i / 2) + 1,
+      teamAId: gameTeams[i].id,
+      teamBId: gameTeams[i + 1].id,
+      scoreA: null,
+      scoreB: null,
+    });
+  }
+
+  const roundCount = FORMAT_CONFIG[game.format].rounds.length;
+  for (let round = 0; round < roundCount; round++) {
+    roundMatches.forEach((match, index) => {
+      const aWins = (round + index) % 2 === 0;
+      match.scoreA = aWins ? 6 : 3 + ((round + index) % 2);
+      match.scoreB = aWins ? 3 + ((round + index) % 2) : 6;
+    });
+    seedGameMatches.push(...roundMatches);
+    if (round < roundCount - 1) {
+      roundMatches = generateNextRoundMatches(
+        game,
+        seedGameMatches,
+        round,
+        () => `seed-${game.id}-r${round + 2}-m${++generatedMatchId}`,
+      ) ?? [];
+    }
+  }
+
+  const standings = computeStandings(game, gameTeams, seedGameMatches);
+  const byTeam = new Map(standings.map((standing) => [standing.team.id, standing]));
+  roster.forEach((participant) => {
+    const standing = participant.teamId ? byTeam.get(participant.teamId) : undefined;
+    if (standing) {
+      participant.position = standing.rank;
+      participant.pointsAwarded = standing.total;
+    }
+  });
+}
+
 // ---- applications (~8) ----
 export const seedApplications: Application[] = [
-  { id: 'a1', name: 'Jonas Weber', level: 'intermediate', preferredSide: 'right', gender: 'male', referralSource: 'friend', proofOfSkillFileUrl: 'jonas_match_video.pdf', phoneNumber: '+971529001001', email: 'jonas.w@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'pending', createdAt: iso(-1), updatedAt: iso(-1) },
-  { id: 'a2', name: 'Priya Sharma', level: 'beginner', preferredSide: 'both', gender: 'female', referralSource: 'instagram', phoneNumber: '+971529001002', email: 'priya.s@example.com', whatsappOptIn: true, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'pending', createdAt: iso(-2), updatedAt: iso(-2) },
-  { id: 'a3', name: 'Khalid Mansour', level: 'intermediate', preferredSide: 'left', gender: 'male', referralSource: 'event', proofOfSkillFileUrl: 'khalid_ranking.png', phoneNumber: '+971555004637', email: 'khalid.m@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, matchedExistingUserId: 'u37', blacklistFlag: false, status: 'pending', createdAt: iso(-2), updatedAt: iso(-2) },
-  { id: 'a4', name: 'Boris Lebedev', level: 'advanced', preferredSide: 'right', gender: 'male', referralSource: 'other', phoneNumber: '+971529001004', whatsappOptIn: true, whatsappMarketingOptIn: false, matchedExistingUserId: 'u36', blacklistFlag: true, status: 'pending', createdAt: iso(-3), updatedAt: iso(-3) },
-  { id: 'a5', name: 'Camille Laurent', level: 'advanced', preferredSide: 'left', gender: 'female', referralSource: 'search', proofOfSkillFileUrl: 'camille_wpt_profile.pdf', phoneNumber: '+971529001005', email: 'camille.l@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'pending', createdAt: iso(-4), updatedAt: iso(-4) },
-  { id: 'a6', name: 'Andrei Popescu', level: 'intermediate', preferredSide: 'both', gender: 'male', referralSource: 'facebook', phoneNumber: '+971529001006', whatsappOptIn: true, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'pending', createdAt: iso(-5), updatedAt: iso(-5) },
-  { id: 'a7', name: 'Mia Johnson', level: 'beginner', preferredSide: 'right', gender: 'female', referralSource: 'friend', phoneNumber: '+971529001007', email: 'mia.j@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'approved', reviewedBy: 'admin1', reviewedAt: iso(-6), createdAt: iso(-8), updatedAt: iso(-6) },
-  { id: 'a8', name: 'Stefan Horvat', level: 'intermediate', preferredSide: 'left', gender: 'male', referralSource: 'instagram', phoneNumber: '+971529001008', whatsappOptIn: false, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'rejected', reviewedBy: 'admin1', reviewedAt: iso(-7), createdAt: iso(-10), updatedAt: iso(-7) },
+  { id: 'a1', name: 'Jonas Weber', level: 'C', preferredSide: 'right', gender: 'male', referralSource: 'friend', proofOfSkillFileUrl: 'jonas_match_video.pdf', phoneNumber: '+971529001001', email: 'jonas.w@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'pending', createdAt: iso(-1), updatedAt: iso(-1) },
+  { id: 'a2', name: 'Priya Sharma', level: 'D', preferredSide: 'both', gender: 'female', referralSource: 'instagram', phoneNumber: '+971529001002', email: 'priya.s@example.com', whatsappOptIn: true, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'pending', createdAt: iso(-2), updatedAt: iso(-2) },
+  { id: 'a3', name: 'Khalid Mansour', level: 'C', preferredSide: 'left', gender: 'male', referralSource: 'event', proofOfSkillFileUrl: 'khalid_ranking.png', phoneNumber: '+971555004637', email: 'khalid.m@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, matchedExistingUserId: 'u37', blacklistFlag: false, status: 'pending', createdAt: iso(-2), updatedAt: iso(-2) },
+  { id: 'a4', name: 'Boris Lebedev', level: 'B', preferredSide: 'right', gender: 'male', referralSource: 'other', phoneNumber: '+971529001004', whatsappOptIn: true, whatsappMarketingOptIn: false, matchedExistingUserId: 'u36', blacklistFlag: true, status: 'pending', createdAt: iso(-3), updatedAt: iso(-3) },
+  { id: 'a5', name: 'Camille Laurent', level: 'B+', preferredSide: 'left', gender: 'female', referralSource: 'search', proofOfSkillFileUrl: 'camille_wpt_profile.pdf', phoneNumber: '+971529001005', email: 'camille.l@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'pending', createdAt: iso(-4), updatedAt: iso(-4) },
+  { id: 'a6', name: 'Andrei Popescu', level: 'C', preferredSide: 'both', gender: 'male', referralSource: 'facebook', phoneNumber: '+971529001006', whatsappOptIn: true, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'pending', createdAt: iso(-5), updatedAt: iso(-5) },
+  { id: 'a7', name: 'Mia Johnson', level: 'E', preferredSide: 'right', gender: 'female', referralSource: 'friend', phoneNumber: '+971529001007', email: 'mia.j@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'approved', reviewedBy: 'admin1', reviewedAt: iso(-6), createdAt: iso(-8), updatedAt: iso(-6) },
+  { id: 'a8', name: 'Stefan Horvat', level: 'C', preferredSide: 'left', gender: 'male', referralSource: 'instagram', phoneNumber: '+971529001008', whatsappOptIn: false, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'rejected', reviewedBy: 'admin1', reviewedAt: iso(-7), createdAt: iso(-10), updatedAt: iso(-7) },
 ];
 
 // ---- offers (~6) ----
@@ -267,8 +350,8 @@ export const seedNotifications: AppNotification[] = [
   { id: 'n2', userId: 'u1', title: 'Result published', message: 'Results for Thursday Americano are out — you finished 1st and earned 20 points!', type: 'result_published', channel: 'in_app', isRead: false, createdAt: iso(-2, 22) },
   { id: 'n3', userId: 'u1', title: 'New offer added', message: '15% off Bullpadel rackets at Padel Gear UAE.', type: 'offer_added', channel: 'whatsapp', isRead: false, createdAt: iso(-5, 12) },
   { id: 'n4', userId: 'u1', title: 'Added to game', message: 'You were added to Sunday Social Shuffle at Real Padel Club.', type: 'added_to_game', channel: 'whatsapp', isRead: true, createdAt: iso(-6, 15) },
-  { id: 'n5', userId: 'u1', title: 'Game updated', message: 'Advanced King of the Court moved to 20:00 (was 19:30).', type: 'game_updated', channel: 'in_app', isRead: true, createdAt: iso(-7, 10) },
-  { id: 'n6', userId: 'u1', title: 'Game cancelled', message: 'Beginners Social on ' + dateStr(-27) + ' was cancelled due to court maintenance.', type: 'game_cancelled', channel: 'whatsapp', isRead: true, createdAt: iso(-27, 9) },
+  { id: 'n5', userId: 'u1', title: 'Game updated', message: 'B+ King of the Court moved to 20:00 (was 19:30).', type: 'game_updated', channel: 'in_app', isRead: true, createdAt: iso(-7, 10) },
+  { id: 'n6', userId: 'u1', title: 'Game cancelled', message: 'E Entry Social on ' + dateStr(-27) + ' was cancelled due to court maintenance.', type: 'game_cancelled', channel: 'whatsapp', isRead: true, createdAt: iso(-27, 9) },
   { id: 'n7', userId: 'u1', title: 'Result published', message: 'Results for July Mini-Tournament are out — you finished 1st!', type: 'result_published', channel: 'in_app', isRead: true, createdAt: iso(-20, 22) },
   { id: 'n8', userId: 'u1', title: 'Application approved', message: 'Welcome to Padel Nomads! Your application has been approved.', type: 'application_approved', channel: 'whatsapp', isRead: true, createdAt: iso(-410, 11) },
   { id: 'n9', userId: 'u1', title: 'Removed from game', message: 'You were removed from Weekend Warm-up at your request.', type: 'removed_from_game', channel: 'in_app', isRead: true, createdAt: iso(-40, 13) },
@@ -288,7 +371,7 @@ function karma(userId: string, eventType: KarmaEventType, points: number, balanc
 
 export const seedKarmaEvents: KarmaEvent[] = [
   // u1: 100 -> 88
-  karma('u1', 'late_cancellation', -15, 85, -35, { gameId: 'g10', note: 'Cancelled 18h before Advanced Americano' }),
+  karma('u1', 'late_cancellation', -15, 85, -35, { gameId: 'g10', note: 'Cancelled 18h before B Americano' }),
   karma('u1', 'on_time_game', 2, 87, -20, { gameId: 'g11' }),
   karma('u1', 'conduct_award', 3, 90, -12, { performedBy: 'admin1', reasonCode: 'helped_organize', note: 'Helped set up courts at short notice' }),
   karma('u1', 'late_arrival', -5, 85, -9, { gameId: 'g9' }),
@@ -372,7 +455,7 @@ export const seedOutbound: OutboundMessage[] = [
 export const seedInbound: InboundMessage[] = [
   { id: 'im1', waMessageId: 'wamid.in1', fromPhone: seedPhones.find((p) => p.userId === 'u2')!.phoneNumber, userId: 'u2', type: 'button_reply', body: 'Confirm', buttonPayload: 'confirm:g1', handled: true, handledBy: 'system', handledAt: iso(-1), receivedAt: iso(-1), createdAt: iso(-1) },
   { id: 'im2', waMessageId: 'wamid.in2', fromPhone: seedPhones.find((p) => p.userId === 'u27')!.phoneNumber, userId: 'u27', type: 'button_reply', body: 'Cannot play', buttonPayload: 'decline:g1', handled: true, handledBy: 'system', handledAt: iso(0, 9), receivedAt: iso(0, 9), createdAt: iso(0, 9) },
-  { id: 'im3', waMessageId: 'wamid.in3', fromPhone: seedPhones.find((p) => p.userId === 'u7')!.phoneNumber, userId: 'u7', type: 'text', body: 'Can I bring a friend on Tuesday? He is intermediate.', handled: false, receivedAt: iso(0, 10), createdAt: iso(0, 10) },
+  { id: 'im3', waMessageId: 'wamid.in3', fromPhone: seedPhones.find((p) => p.userId === 'u7')!.phoneNumber, userId: 'u7', type: 'text', body: 'Can I bring a friend on Tuesday? He is C level.', handled: false, receivedAt: iso(0, 10), createdAt: iso(0, 10) },
   { id: 'im4', waMessageId: 'wamid.in4', fromPhone: '+971528887766', type: 'text', body: 'Hi, how do I join Padel Nomads?', handled: false, receivedAt: iso(0, 11), createdAt: iso(0, 11) },
   { id: 'im5', waMessageId: 'wamid.in5', fromPhone: seedPhones.find((p) => p.userId === 'u15')!.phoneNumber, userId: 'u15', type: 'text', body: 'STOP', handled: true, handledBy: 'system', handledAt: iso(-4), receivedAt: iso(-4), createdAt: iso(-4) },
 ];
@@ -384,10 +467,10 @@ export const seedImportBatches: ImportBatch[] = [
 ];
 
 export const seedImportRecords: ImportRecord[] = [
-  { id: 'ir1', importBatchId: 'imp1', rowNumber: 1, rawData: 'Khalid Mansour, +971555004637, Intermediate', resolvedUserId: 'u37', action: 'created', createdAt: iso(-45) },
-  { id: 'ir2', importBatchId: 'imp1', rowNumber: 2, rawData: 'Rita Fernandes, +971555004774, Beginner', resolvedUserId: 'u38', action: 'created', createdAt: iso(-45) },
-  { id: 'ir3', importBatchId: 'imp1', rowNumber: 3, rawData: 'Kate Smirnova, +971555004911, Intermediate', resolvedUserId: 'u40', action: 'created', createdAt: iso(-45) },
-  { id: 'ir4', importBatchId: 'imp1', rowNumber: 4, rawData: 'Maria Petrova, +971550137113, Advanced', resolvedUserId: 'u2', action: 'skipped', errorDetail: 'Exact phone match with existing profile', createdAt: iso(-45) },
+  { id: 'ir1', importBatchId: 'imp1', rowNumber: 1, rawData: 'Khalid Mansour, +971555004637, C', resolvedUserId: 'u37', action: 'created', createdAt: iso(-45) },
+  { id: 'ir2', importBatchId: 'imp1', rowNumber: 2, rawData: 'Rita Fernandes, +971555004774, E', resolvedUserId: 'u38', action: 'created', createdAt: iso(-45) },
+  { id: 'ir3', importBatchId: 'imp1', rowNumber: 3, rawData: 'Kate Smirnova, +971555004911, C', resolvedUserId: 'u40', action: 'created', createdAt: iso(-45) },
+  { id: 'ir4', importBatchId: 'imp1', rowNumber: 4, rawData: 'Maria Petrova, +971550137113, B', resolvedUserId: 'u2', action: 'skipped', errorDetail: 'Exact phone match with existing profile', createdAt: iso(-45) },
   { id: 'ir5', importBatchId: 'imp1', rowNumber: 5, rawData: 'John ???, 05x-invalid', action: 'error', errorDetail: 'Phone not parseable to E.164', createdAt: iso(-45) },
 ];
 

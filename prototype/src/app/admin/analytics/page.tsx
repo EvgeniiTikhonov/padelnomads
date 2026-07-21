@@ -141,7 +141,7 @@ export default function AnalyticsPage() {
               <CardContent className="space-y-3 p-4 pt-0">
                 <Bars data={waByStatus} />
                 <p className="text-xs text-muted-foreground">
-                  Est. spend this month: <strong>${estSpend}</strong> · quality rating: <Badge className="border-none bg-green-100 text-green-700">High</Badge> · tier: 1k/24h
+                  Est. spend this month: <strong>${estSpend}</strong> · quality rating: <Badge className="border-none bg-primary/15 text-primary">High</Badge> · tier: 1k/24h
                 </p>
               </CardContent>
             </Card>

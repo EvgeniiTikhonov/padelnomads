@@ -24,11 +24,11 @@ export default function AdminDashboard() {
   const deliveryRate = outbound.length ? Math.round((delivered / outbound.length) * 100) : 0;
 
   const cards = [
-    { href: '/admin/applications', icon: Inbox, label: 'Pending applications', value: pendingApps.length, sub: `${applications.length} total`, tone: 'text-amber-600 bg-amber-100' },
-    { href: '/admin/games', icon: CalendarDays, label: 'Upcoming games', value: upcoming.length, sub: 'next 2 weeks focus', tone: 'text-blue-600 bg-blue-100' },
-    { href: live ? `/admin/games/${live.id}` : '/admin/games', icon: Radio, label: 'Live game', value: live ? 1 : 0, sub: live ? `${live.title} · ${live.venue}` : 'none right now', tone: 'text-green-600 bg-green-100' },
-    { href: '/admin/offers', icon: Tag, label: 'Active offers', value: activeOffers.length, sub: `${offers.length} total`, tone: 'text-violet-600 bg-violet-100' },
-    { href: '/admin/karma', icon: Gauge, label: 'Suspension queue', value: suspensionQueue.length, sub: 'karma ≤ 0, awaiting review', tone: 'text-red-600 bg-red-100' },
+    { href: '/admin/applications', icon: Inbox, label: 'Pending applications', value: pendingApps.length, sub: `${applications.length} total`, tone: 'text-amber-300 bg-amber-500/15' },
+    { href: '/admin/games', icon: CalendarDays, label: 'Upcoming games', value: upcoming.length, sub: 'next 2 weeks focus', tone: 'text-blue-300 bg-blue-500/15' },
+    { href: live ? `/admin/games/${live.id}` : '/admin/games', icon: Radio, label: 'Live game', value: live ? 1 : 0, sub: live ? `${live.title} · ${live.venue}` : 'none right now', tone: 'text-primary bg-primary/15' },
+    { href: '/admin/offers', icon: Tag, label: 'Active offers', value: activeOffers.length, sub: `${offers.length} total`, tone: 'text-violet-300 bg-violet-500/15' },
+    { href: '/admin/karma', icon: Gauge, label: 'Suspension queue', value: suspensionQueue.length, sub: 'karma ≤ 0, awaiting review', tone: 'text-red-300 bg-red-500/15' },
     { href: '/admin/players', icon: Copy, label: 'Open duplicates', value: openDuplicates.length, sub: 'candidate pairs to review', tone: 'text-orange-600 bg-orange-100' },
     { href: '/admin/whatsapp', icon: MessageCircle, label: 'WhatsApp delivery', value: `${deliveryRate}%`, sub: `${failed} failed/dropped of ${outbound.length}`, tone: 'text-teal-600 bg-teal-100' },
   ];
@@ -73,7 +73,7 @@ export default function AdminDashboard() {
                 <Link key={a.id} href="/admin/applications" className="flex items-center justify-between gap-2 py-2.5">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{a.name ?? a.phoneNumber}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{a.level} · {formatDate(a.createdAt.slice(0, 10))}</p>
+                    <p className="text-xs text-muted-foreground">{a.level} · {formatDate(a.createdAt.slice(0, 10))}</p>
                   </div>
                   <div className="flex gap-1">
                     {a.matchedExistingUserId && <Badge variant="secondary">Identity match</Badge>}
