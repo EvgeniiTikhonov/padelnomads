@@ -147,7 +147,7 @@ export default function PlayersPage() {
               <Card key={d.id} className="rounded-2xl py-0 shadow-sm">
                 <CardContent className="space-y-3 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Badge className={`border-none ${d.confidence === 'high' ? 'bg-red-100 text-red-700' : d.confidence === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                    <Badge className={`border-none ${d.confidence === 'high' ? 'bg-red-500/15 text-red-300' : d.confidence === 'medium' ? 'bg-amber-500/15 text-amber-300' : 'bg-white/10 text-white/60'}`}>
                       {d.confidence} confidence
                     </Badge>
                     <p className="text-xs text-muted-foreground">{d.reason}</p>
@@ -264,7 +264,7 @@ export default function PlayersPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge className={`border-none capitalize ${b.status === 'committed' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                    <Badge className={`border-none capitalize ${b.status === 'committed' ? 'bg-primary/15 text-primary' : 'bg-white/10 text-white/60'}`}>
                       {b.status.replace('_', ' ')}
                     </Badge>
                     {b.status === 'committed' && (
@@ -297,7 +297,7 @@ export default function PlayersPage() {
                 return (
                   <div key={br.id} className="py-3">
                     <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                      <Badge className={`border-none capitalize ${br.action === 'ban' ? 'bg-red-100 text-red-700' : br.action === 'unban' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                      <Badge className={`border-none capitalize ${br.action === 'ban' ? 'bg-red-500/15 text-red-300' : br.action === 'unban' ? 'bg-primary/15 text-primary' : 'bg-white/10 text-white/60'}`}>
                         {br.action.replace(/_/g, ' ')}
                       </Badge>
                       {u?.name ?? br.phoneNumbers.join(', ')}

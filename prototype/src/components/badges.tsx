@@ -31,12 +31,12 @@ export function ParticipantStatusBadge({ status }: { status: ParticipantStatus }
 }
 
 const USER_STATUS_CLASSES: Record<UserStatus, string> = {
-  imported: 'bg-violet-100 text-violet-700',
-  invited: 'bg-blue-100 text-blue-700',
-  pending: 'bg-amber-100 text-amber-700',
-  approved: 'bg-green-100 text-green-700',
-  rejected: 'bg-slate-100 text-slate-600',
-  banned: 'bg-red-100 text-red-700',
+  imported: 'bg-violet-500/15 text-violet-300',
+  invited: 'bg-blue-500/15 text-blue-300',
+  pending: 'bg-amber-500/15 text-amber-300',
+  approved: 'bg-primary/15 text-primary',
+  rejected: 'bg-white/10 text-white/60',
+  banned: 'bg-red-500/15 text-red-300',
 };
 
 export function UserStatusBadge({ status }: { status: UserStatus }) {

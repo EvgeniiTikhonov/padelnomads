@@ -1,11 +1,20 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { DM_Sans, Outfit } from 'next/font/google';
 import { Toaster } from '@/components/ui/sonner';
 import { MockDataProvider } from '@/data/provider';
 import './globals.css';
 
-const geistSans = Geist({ variable: '--font-sans', subsets: ['latin'] });
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
+const dmSans = DM_Sans({
+  variable: '--font-sans',
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+});
+
+const outfit = Outfit({
+  variable: '--font-outfit',
+  subsets: ['latin'],
+  weight: ['500', '600', '700', '800'],
+});
 
 export const metadata: Metadata = {
   title: {
@@ -30,7 +39,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${dmSans.variable} ${outfit.variable} dark antialiased`}>
         <MockDataProvider>
           {children}
           <Toaster position="top-center" richColors />

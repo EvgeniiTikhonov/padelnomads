@@ -32,25 +32,25 @@ export const USER_STATUS_LABELS: Record<UserStatus, string> = {
 };
 
 export const GAME_STATUS_META: Record<GameStatus, { label: string; className: string }> = {
-  upcoming: { label: 'Upcoming', className: 'bg-blue-100 text-blue-700' },
-  live: { label: 'Live', className: 'bg-green-100 text-green-700' },
-  completed: { label: 'Completed', className: 'bg-slate-100 text-slate-600' },
-  cancelled: { label: 'Cancelled', className: 'bg-red-100 text-red-700' },
+  upcoming: { label: 'Upcoming', className: 'bg-blue-500/15 text-blue-300' },
+  live: { label: 'Live', className: 'bg-primary/15 text-primary' },
+  completed: { label: 'Completed', className: 'bg-white/10 text-white/60' },
+  cancelled: { label: 'Cancelled', className: 'bg-red-500/15 text-red-300' },
 };
 
 export const KARMA_TIER_META: Record<KarmaTier, { label: string; className: string; dot: string }> = {
-  good: { label: 'Good standing', className: 'bg-green-100 text-green-700', dot: 'bg-green-500' },
-  warning: { label: 'Warning', className: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
-  restricted: { label: 'Restricted', className: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' },
-  suspended: { label: 'Suspended', className: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
+  good: { label: 'Good standing', className: 'bg-primary/15 text-primary', dot: 'bg-primary' },
+  warning: { label: 'Warning', className: 'bg-amber-500/15 text-amber-300', dot: 'bg-amber-400' },
+  restricted: { label: 'Restricted', className: 'bg-orange-500/15 text-orange-300', dot: 'bg-orange-400' },
+  suspended: { label: 'Suspended', className: 'bg-red-500/15 text-red-300', dot: 'bg-red-400' },
 };
 
 export const PARTICIPANT_STATUS_META: Record<ParticipantStatus, { label: string; className: string }> = {
-  registered: { label: 'Awaiting confirmation', className: 'bg-amber-100 text-amber-700' },
-  confirmed: { label: 'Confirmed', className: 'bg-green-100 text-green-700' },
-  cancelled: { label: 'Cancelled', className: 'bg-red-100 text-red-700' },
-  no_show: { label: 'No-show', className: 'bg-red-100 text-red-700' },
-  waitlisted: { label: 'Waitlisted', className: 'bg-slate-100 text-slate-600' },
+  registered: { label: 'Awaiting confirmation', className: 'bg-amber-500/15 text-amber-300' },
+  confirmed: { label: 'Confirmed', className: 'bg-primary/15 text-primary' },
+  cancelled: { label: 'Cancelled', className: 'bg-red-500/15 text-red-300' },
+  no_show: { label: 'No-show', className: 'bg-red-500/15 text-red-300' },
+  waitlisted: { label: 'Waitlisted', className: 'bg-white/10 text-white/60' },
 };
 
 export const KARMA_EVENT_LABELS: Record<KarmaEventType, string> = {

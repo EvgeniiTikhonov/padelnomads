@@ -110,7 +110,7 @@ export default function KarmaPage() {
                   <div>
                     <p className="flex items-center gap-2 font-medium">
                       <ShieldAlert className="size-4 text-red-600" /> {p.name}
-                      <Badge className="border-none bg-red-100 text-red-700">balance {p.karmaBalance}</Badge>
+                      <Badge className="border-none bg-red-500/15 text-red-300">balance {p.karmaBalance}</Badge>
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Sign-up automatically suspended. Decide: recovery plan or ban (PRD §16.16).

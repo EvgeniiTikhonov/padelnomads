@@ -19,19 +19,19 @@ import { useMockData } from '@/data/provider';
 import { formatDateTime, timeAgo } from '@/lib/format';
 
 const STATUS_TONE: Record<string, string> = {
-  queued: 'bg-slate-100 text-slate-600',
-  sent: 'bg-blue-100 text-blue-700',
+  queued: 'bg-white/10 text-white/60',
+  sent: 'bg-blue-500/15 text-blue-300',
   delivered: 'bg-teal-100 text-teal-700',
-  read: 'bg-green-100 text-green-700',
-  failed: 'bg-red-100 text-red-700',
+  read: 'bg-primary/15 text-primary',
+  failed: 'bg-red-500/15 text-red-300',
   dropped: 'bg-orange-100 text-orange-700',
 };
 
 const APPROVAL_TONE: Record<string, string> = {
-  approved: 'bg-green-100 text-green-700',
-  pending: 'bg-amber-100 text-amber-700',
-  rejected: 'bg-red-100 text-red-700',
-  draft: 'bg-slate-100 text-slate-600',
+  approved: 'bg-primary/15 text-primary',
+  pending: 'bg-amber-500/15 text-amber-300',
+  rejected: 'bg-red-500/15 text-red-300',
+  draft: 'bg-white/10 text-white/60',
 };
 
 export default function WhatsAppPage() {
@@ -251,10 +251,10 @@ export default function WhatsAppPage() {
                 <div key={u.id} className="flex items-center justify-between gap-2 p-3.5 text-sm">
                   <span className="font-medium">{u.name}</span>
                   <span className="flex gap-1.5">
-                    <Badge className={`border-none ${u.whatsappOptIn ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    <Badge className={`border-none ${u.whatsappOptIn ? 'bg-primary/15 text-primary' : 'bg-red-500/15 text-red-300'}`}>
                       <MessageCircle className="size-3" /> service {u.whatsappOptIn ? 'on' : 'off'}
                     </Badge>
-                    <Badge className={`border-none ${u.whatsappMarketingOptIn ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                    <Badge className={`border-none ${u.whatsappMarketingOptIn ? 'bg-primary/15 text-primary' : 'bg-white/10 text-white/60'}`}>
                       marketing {u.whatsappMarketingOptIn ? 'on' : 'off'}
                     </Badge>
                   </span>

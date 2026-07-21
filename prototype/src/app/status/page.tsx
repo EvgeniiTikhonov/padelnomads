@@ -15,25 +15,25 @@ export default function StatusPage() {
 
   const content = {
     pending: {
-      icon: Clock, tone: 'bg-amber-100 text-amber-700',
+      icon: Clock, tone: 'bg-amber-500/15 text-amber-300',
       title: 'Your application is pending',
       badge: 'Pending review',
       text: 'Thanks for applying to Padel Nomads! Our team reviews every application to keep the community curated. You will get a WhatsApp message as soon as a decision is made — usually within a couple of days.',
     },
     approved: {
-      icon: CheckCircle2, tone: 'bg-green-100 text-green-700',
+      icon: CheckCircle2, tone: 'bg-primary/15 text-primary',
       title: 'You are approved!',
       badge: 'Approved',
       text: 'Welcome to Padel Nomads. Your member area is ready — browse upcoming games and confirm your first spot.',
     },
     rejected: {
-      icon: XCircle, tone: 'bg-slate-200 text-slate-600',
+      icon: XCircle, tone: 'bg-white/10 text-white/60',
       title: 'Application not approved',
       badge: 'Rejected',
       text: 'Unfortunately your application was not approved this time. The community is curated by level and capacity — you are welcome to reapply in the future.',
     },
     banned: {
-      icon: Ban, tone: 'bg-red-100 text-red-700',
+      icon: Ban, tone: 'bg-red-500/15 text-red-300',
       title: 'Access denied',
       badge: 'Banned',
       text: 'This account has been banned from the Padel Nomads community and cannot access the platform or reapply. If you believe this is a mistake, contact the admins.',
@@ -41,10 +41,10 @@ export default function StatusPage() {
   }[status];
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0d0d0d]/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link href="/"><Logo /></Link>
+          <Link href="/"><Logo markClassName="h-6" /></Link>
           <RoleSwitcher />
         </div>
       </header>

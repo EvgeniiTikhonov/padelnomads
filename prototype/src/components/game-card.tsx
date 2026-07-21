@@ -20,7 +20,7 @@ export function GameCard({ game, href }: { game: Game; href: string }) {
 
   return (
     <Link href={href} className="block">
-      <Card className="rounded-2xl py-0 shadow-sm transition-shadow hover:shadow-md">
+      <Card className="rounded-2xl border-white/10 bg-card py-0 shadow-none transition-colors hover:bg-white/[0.04]">
         <CardContent className="space-y-3 p-4">
           <div className="flex items-start justify-between gap-2">
             <div>

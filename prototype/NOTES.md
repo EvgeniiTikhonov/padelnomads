@@ -22,9 +22,7 @@ Where the PRD leaves questions open (§20), the prototype adopts the defaults be
 
 ## Deviations / flags
 
-- **Brand logos**: the brief references `logos/1-01.png … 1-04.png`, but no `logos/` folder was found in the
-  workspace or next to the PRD. A typographic logo component (`src/components/logo.tsx`) stands in; drop the
-  PNGs into `/public/brand/` and swap the component to `<Image>` when available.
+- **Brand logos**: official mark lives at `public/brand/logo.png` (black) and `logo-white.png` (white). The `Logo` component uses the white mark by default for the dark UI.
 - **Application form name field**: PRD §6.1 does not list "Name" as a form field, but §9.2 requires the
   admin list to show "Applicant name, if collected". The form therefore includes an optional Name input.
 - **Karma on decline**: declining participation less than 24h/4h before start applies the −15/−25 penalty
@@ -35,6 +33,10 @@ Where the PRD leaves questions open (§20), the prototype adopts the defaults be
   bar charts and mock numbers, no chart library.
 - **Duplicate queue**: one high-confidence seeded pair (Katerina Smirnova / Kate Smirnova). Merge moves phones,
   participations and points to the survivor and logs a `PlayerMergeLog`; undo is simulated.
+- **Landing Instagram carousel**: Instagram blocks unauthenticated media scraping, so the bottom carousel uses
+  curated padel community photos in `public/brand/instagram/` that link out to
+  [instagram.com/padel_nomads](https://www.instagram.com/padel_nomads/). Swap those files for a real export
+  from the account when available; no Meta API token is wired in this prototype.
 
 ## Demo walkthrough (maps to Definition of Done → PRD MVP Success Criteria)
 
