@@ -21,7 +21,22 @@ export const GAME_FORMATS = [
 ] as const;
 export type GameFormat = (typeof GAME_FORMATS)[number];
 
-export const LEVELS = ['Beginner', 'Intermediate', 'Advanced', 'Professional'] as const;
+export const LEVELS = ['E', 'D', 'D+', 'C', 'C Strong', 'C+', 'B', 'B+', 'A', 'A+'] as const;
+export type Level = (typeof LEVELS)[number];
+
+export const LEVEL_LABELS: Record<Level | 'mixed', string> = {
+  E: 'E — Entry',
+  D: 'D',
+  'D+': 'D+',
+  C: 'C — Intermediate',
+  'C Strong': 'C Strong',
+  'C+': 'C+',
+  B: 'B — Advanced',
+  'B+': 'B+',
+  A: 'A — Pro',
+  'A+': 'A+ — Elite',
+  mixed: 'Mixed',
+};
 
 export type User = {
   id: string;
@@ -161,21 +176,21 @@ function buildSeed(): StoreState {
     email: 'admin@padelnomads.com',
     role: 'admin',
     status: 'approved',
-    level: 'Advanced',
+    level: 'B',
     preferredSide: 'Both',
     memberSince: dateOffset(-420),
     createdAt: created,
   };
 
   const playerSeeds: Array<Partial<User> & { name: string }> = [
-    { name: 'Alex Carter', level: 'Advanced', preferredSide: 'Right', gender: 'Male' },
-    { name: 'Sofia Reyes', level: 'Professional', preferredSide: 'Left', gender: 'Female' },
-    { name: 'Liam Novak', level: 'Intermediate', preferredSide: 'Both', gender: 'Male' },
-    { name: 'Maya Haddad', level: 'Advanced', preferredSide: 'Left', gender: 'Female' },
-    { name: 'Ethan Park', level: 'Intermediate', preferredSide: 'Right', gender: 'Male' },
-    { name: 'Nadia Costa', level: 'Professional', preferredSide: 'Both', gender: 'Female' },
-    { name: 'Omar Faris', level: 'Advanced', preferredSide: 'Right', gender: 'Male' },
-    { name: 'Jenna Lee', level: 'Beginner', preferredSide: 'Left', gender: 'Female' },
+    { name: 'Alex Carter', level: 'B+', preferredSide: 'Right', gender: 'Male' },
+    { name: 'Sofia Reyes', level: 'A+', preferredSide: 'Left', gender: 'Female' },
+    { name: 'Liam Novak', level: 'C+', preferredSide: 'Both', gender: 'Male' },
+    { name: 'Maya Haddad', level: 'B', preferredSide: 'Left', gender: 'Female' },
+    { name: 'Ethan Park', level: 'C', preferredSide: 'Right', gender: 'Male' },
+    { name: 'Nadia Costa', level: 'A+', preferredSide: 'Both', gender: 'Female' },
+    { name: 'Omar Faris', level: 'B', preferredSide: 'Right', gender: 'Male' },
+    { name: 'Jenna Lee', level: 'D', preferredSide: 'Left', gender: 'Female' },
   ];
 
   const players: User[] = playerSeeds.map((p, i) => ({
@@ -200,7 +215,7 @@ function buildSeed(): StoreState {
     email: 'player@padelnomads.com',
     role: 'player',
     status: 'approved',
-    level: 'Intermediate',
+    level: 'C',
     preferredSide: 'Right',
     gender: 'Non-binary',
     memberSince: dateOffset(-90),
@@ -215,7 +230,7 @@ function buildSeed(): StoreState {
     email: 'pending@padelnomads.com',
     role: 'player',
     status: 'pending',
-    level: 'Intermediate',
+    level: 'C',
     preferredSide: 'Both',
     memberSince: dateOffset(-2),
     createdAt: created,
@@ -231,7 +246,7 @@ function buildSeed(): StoreState {
       name: pendingUser.name,
       phoneNumber: pendingUser.phoneNumber,
       email: pendingUser.email,
-      level: 'Intermediate',
+      level: 'C',
       preferredSide: 'Both',
       gender: 'Prefer not to say',
       referralSource: 'Instagram',
@@ -243,7 +258,7 @@ function buildSeed(): StoreState {
       name: 'Priya Sharma',
       phoneNumber: '+971 50 222 1199',
       email: 'priya@example.com',
-      level: 'Advanced',
+      level: 'B',
       preferredSide: 'Left',
       gender: 'Female',
       referralSource: 'Friend',
@@ -290,7 +305,7 @@ function buildSeed(): StoreState {
       endTime: '21:00',
       courts: 2,
       capacity: participantIds.length,
-      level: 'Intermediate',
+      level: 'C',
       description: 'Completed community session.',
       status: 'past',
       players: participantIds,
@@ -318,7 +333,7 @@ function buildSeed(): StoreState {
       endTime: '21:00',
       courts: 2,
       capacity: 8,
-      level: 'Intermediate',
+      level: 'C',
       description: 'Live now — climb the court ladder.',
       status: 'live',
       players: [demoPlayer.id, ...players.slice(0, 5).map((p) => p.id)],
@@ -336,7 +351,7 @@ function buildSeed(): StoreState {
       endTime: '12:00',
       courts: 3,
       capacity: 12,
-      level: 'All levels',
+      level: 'mixed',
       price: 60,
       description: 'Relaxed mixed games, rotating partners every round.',
       status: 'upcoming',
@@ -355,7 +370,7 @@ function buildSeed(): StoreState {
       endTime: '20:00',
       courts: 2,
       capacity: 8,
-      level: 'Advanced',
+      level: 'B',
       genderRestriction: 'Women',
       price: 70,
       description: 'Women-only competitive session.',
@@ -375,7 +390,7 @@ function buildSeed(): StoreState {
       endTime: '22:00',
       courts: 2,
       capacity: 8,
-      level: 'Intermediate',
+      level: 'C',
       price: 65,
       description: 'Individual scoring, everyone plays with everyone.',
       status: 'upcoming',
@@ -394,7 +409,7 @@ function buildSeed(): StoreState {
       endTime: '11:00',
       courts: 2,
       capacity: 8,
-      level: 'Advanced',
+      level: 'B',
       price: 75,
       description: 'Bring your partner, fixed teams all session.',
       status: 'upcoming',

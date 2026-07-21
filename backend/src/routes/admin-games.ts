@@ -4,13 +4,14 @@ import { createGame, updateGame, addPlayerToGame, removePlayerFromGame, recordRe
 import { requireAuth, requireRole, type AuthRequest } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
+import { GAME_LEVELS } from '../lib/levels.js';
 
 const createGameSchema = z.object({
   date: z.string().transform((s) => new Date(s)),
   time: z.string().min(1),
   venue: z.string().min(1),
   price: z.number().min(0),
-  level: z.string().min(1),
+  level: z.enum(GAME_LEVELS),
   format: z.string().min(1),
   capacity: z.number().int().min(1),
 });

@@ -21,10 +21,16 @@ export type ApplicationFormField = {
 };
 
 export const PADEL_LEVELS = [
-  { value: 'beginner', label: 'Beginner' },
-  { value: 'intermediate', label: 'Intermediate' },
-  { value: 'advanced', label: 'Advanced' },
-  { value: 'professional', label: 'Professional' },
+  { value: 'E', label: 'E — Entry' },
+  { value: 'D', label: 'D' },
+  { value: 'D+', label: 'D+' },
+  { value: 'C', label: 'C — Intermediate' },
+  { value: 'C Strong', label: 'C Strong' },
+  { value: 'C+', label: 'C+' },
+  { value: 'B', label: 'B — Advanced' },
+  { value: 'B+', label: 'B+' },
+  { value: 'A', label: 'A — Pro' },
+  { value: 'A+', label: 'A+ — Elite' },
 ] as const;
 
 export const PREFERRED_SIDES = [
@@ -53,7 +59,7 @@ export const APPLICATION_FORM_FIELDS: ApplicationFormField[] = [
     label: 'Skill level',
     type: 'select',
     required: true,
-    hint: 'Select the level that best matches your current padel experience.',
+    hint: 'Select your Viya letter level (E entry → A+ elite).',
     options: [...PADEL_LEVELS],
   },
   {

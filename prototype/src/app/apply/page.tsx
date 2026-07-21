@@ -16,7 +16,7 @@ import {
 import { Logo } from '@/components/logo';
 import { RoleSwitcher } from '@/components/role-switcher';
 import { useMockData } from '@/data/provider';
-import { LEVEL_LABELS, SIDE_LABELS, GENDER_LABELS } from '@/lib/format';
+import { LEVELS, LEVEL_LABELS, SIDE_LABELS, GENDER_LABELS } from '@/lib/format';
 import type { Level, PreferredSide, Gender, Application } from '@/types';
 
 const REFERRAL_LABELS: Record<NonNullable<Application['referralSource']>, string> = {
@@ -86,7 +86,7 @@ export default function ApplyPage() {
 
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
-            <CardTitle className="font-heading text-xl">Apply to join Padel Nomads</CardTitle>
+            <CardTitle className="font-heading text-xl">Become a Nomad</CardTitle>
             <CardDescription>
               Tell us about your padel. We review every application to keep games balanced and reliable.
             </CardDescription>
@@ -118,7 +118,7 @@ export default function ApplyPage() {
                       <SelectValue placeholder="Select level" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(Object.keys(LEVEL_LABELS) as (Level | 'mixed')[]).filter((l) => l !== 'mixed').map((l) => (
+                      {LEVELS.map((l) => (
                         <SelectItem key={l} value={l}>{LEVEL_LABELS[l]}</SelectItem>
                       ))}
                     </SelectContent>

@@ -215,7 +215,7 @@ export default function PlayersPage() {
                   )}
                   {importStep === 2 && (
                     <div className="space-y-2 text-sm">
-                      {[['Column A — "Name"', 'name'], ['Column B — "WhatsApp"', 'phoneNumber (E.164, default +971)'], ['Column C — "Level"', 'level (enum mapping)'], ['Column D — "Points 2026"', 'points (carried-over rating)']].map(([from, to]) => (
+                      {[['Column A — "Name"', 'name'], ['Column B — "WhatsApp"', 'phoneNumber (E.164, default +971)'], ['Column C — "Level"', 'level (E–A+ letter ladder)'], ['Column D — "Points 2026"', 'points (carried-over rating)']].map(([from, to]) => (
                         <div key={from} className="flex items-center justify-between rounded-lg border px-3 py-2">
                           <span className="text-muted-foreground">{from}</span>
                           <span className="font-medium">→ {to}</span>

@@ -22,11 +22,11 @@ export const metadata: Metadata = {
     template: '%s · Padel Nomads',
   },
   description:
-    'Padel Nomads is a closed, curated padel community. Apply to join, play curated games, climb the leaderboard, and unlock member-only partner offers.',
+    'Padel Nomads is a closed, curated padel community. Become a Nomad, play curated games, climb the leaderboard, and unlock member-only partner offers.',
   keywords: ['padel', 'community', 'Dubai', 'games', 'americano', 'padel club'],
   openGraph: {
     title: 'Padel Nomads — Curated Padel Community',
-    description: 'Apply to join a curated padel community: games, leaderboard, member benefits.',
+    description: 'Become a Nomad in a curated padel community: games, leaderboard, member benefits.',
     type: 'website',
   },
 };

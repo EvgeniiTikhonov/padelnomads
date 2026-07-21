@@ -11,17 +11,14 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { useMockData } from '@/data/provider';
 import { leaderboard } from '@/lib/derive';
-import { LEVEL_LABELS, initials } from '@/lib/format';
+import { LEVELS, LEVEL_LABELS, initials } from '@/lib/format';
 import type { Level } from '@/types';
 
 type Filter = 'overall' | Level | 'male' | 'female';
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'overall', label: 'Overall' },
-  { key: 'beginner', label: 'Beginner' },
-  { key: 'intermediate', label: 'Intermediate' },
-  { key: 'advanced', label: 'Advanced' },
-  { key: 'professional', label: 'Pro' },
+  ...LEVELS.map((l) => ({ key: l as Filter, label: LEVEL_LABELS[l] })),
   { key: 'male', label: 'Men' },
   { key: 'female', label: 'Women' },
 ];

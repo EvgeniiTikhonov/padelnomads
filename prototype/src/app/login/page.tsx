@@ -95,7 +95,7 @@ export default function LoginPage() {
             </div>
 
             <p className="text-center text-xs text-muted-foreground">
-              New here? <Link href="/apply" className="font-medium text-primary hover:underline">Apply to join</Link>
+              New here? <Link href="/apply" className="font-medium text-primary hover:underline">Become a Nomad</Link>
             </p>
           </CardContent>
         </Card>

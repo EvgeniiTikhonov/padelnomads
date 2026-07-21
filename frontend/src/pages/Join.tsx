@@ -6,7 +6,7 @@ export default function Join() {
     <div className="mx-auto max-w-2xl px-6 py-20">
       <h1 className="heading-section">Join the community</h1>
       <p className="body-lg mt-4">
-        Apply to join Padel Nomads. We review each application to keep the community exclusive.
+        Become a Nomad. We review each application to keep the community exclusive.
       </p>
 
       <div className="mt-10">

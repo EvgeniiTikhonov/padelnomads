@@ -3,7 +3,9 @@
 // PRD §15.1
 export type Role = 'player' | 'admin';
 export type UserStatus = 'imported' | 'invited' | 'pending' | 'approved' | 'rejected' | 'banned';
-export type Level = 'beginner' | 'intermediate' | 'advanced' | 'professional';
+/** Viya / Dubai Golf letter ladder (E → A+). */
+export const LEVELS = ['E', 'D', 'D+', 'C', 'C Strong', 'C+', 'B', 'B+', 'A', 'A+'] as const;
+export type Level = (typeof LEVELS)[number];
 export type PreferredSide = 'left' | 'right' | 'both';
 export type Gender = 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';
 export type KarmaTier = 'good' | 'warning' | 'restricted' | 'suspended';

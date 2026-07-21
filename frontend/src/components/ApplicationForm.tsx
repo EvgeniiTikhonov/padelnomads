@@ -167,11 +167,11 @@ export default function ApplicationForm() {
           />
         </Field>
 
-        <Field label="Skill level" required hint="Select the level that best matches your experience.">
+        <Field label="Skill level" required hint="Select your Viya letter level (E entry → A+ elite).">
           <select className="form-control" value={values.level} onChange={(e) => set('level', e.target.value)}>
             <option value="">Select…</option>
             {PADEL_LEVELS.map((o) => (
-              <option key={o.value} value={o.label}>
+              <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}

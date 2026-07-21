@@ -37,6 +37,9 @@ Where the PRD leaves questions open (§20), the prototype adopts the defaults be
   curated padel community photos in `public/brand/instagram/` that link out to
   [instagram.com/padel_nomads](https://www.instagram.com/padel_nomads/). Swap those files for a real export
   from the account when available; no Meta API token is wired in this prototype.
+- **Skill levels**: Viya / Dubai Golf letter ladder — `E`, `D`, `D+`, `C`, `C Strong`, `C+`, `B`, `B+`, `A`, `A+`
+  (plus `mixed` for open games). Source:
+  [Viya padel level structure](https://www.dubaigolf.com/media/zpzkplfg/viya-padel-level-structure.pdf).
 
 ## Demo walkthrough (maps to Definition of Done → PRD MVP Success Criteria)
 

@@ -3,6 +3,8 @@ import { useAuth } from '@/lib/auth';
 import {
   actions,
   GAME_FORMATS,
+  LEVELS,
+  LEVEL_LABELS,
   type Game,
   type GameFormat,
   type GameStatus,
@@ -16,6 +18,7 @@ type Props = {
 };
 
 const STATUSES: GameStatus[] = ['upcoming', 'live', 'past', 'cancelled'];
+const GAME_LEVEL_OPTIONS = ['mixed', ...LEVELS] as const;
 
 export default function GameFormModal({ open, onClose, game }: Props) {
   const { user } = useAuth();
@@ -30,7 +33,7 @@ export default function GameFormModal({ open, onClose, game }: Props) {
     endTime: game?.endTime ?? '21:00',
     courts: game?.courts ?? 2,
     capacity: game?.capacity ?? 8,
-    level: game?.level ?? 'Intermediate',
+    level: game?.level ?? 'C',
     price: game?.price?.toString() ?? '',
     genderRestriction: game?.genderRestriction ?? '',
     description: game?.description ?? '',
@@ -138,7 +141,17 @@ export default function GameFormModal({ open, onClose, game }: Props) {
             />
           </Field>
           <Field label="Level">
-            <input className="form-control" value={form.level} onChange={(e) => set('level', e.target.value)} />
+            <select
+              className="form-control"
+              value={form.level}
+              onChange={(e) => set('level', e.target.value)}
+            >
+              {GAME_LEVEL_OPTIONS.map((l) => (
+                <option key={l} value={l}>
+                  {LEVEL_LABELS[l]}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Price (AED)">
             <input

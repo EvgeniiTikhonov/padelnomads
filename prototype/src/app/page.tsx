@@ -3,14 +3,17 @@
 import * as React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ChevronDown, Clock, ExternalLink, LogIn, Share2 } from 'lucide-react';
+import { Clock, ExternalLink, LogIn, Share2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from '@/components/logo';
 import { RoleSwitcher } from '@/components/role-switcher';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { useMockData } from '@/data/provider';
-import { spotsTaken, visibleGames } from '@/lib/derive';
-import { LEVEL_LABELS } from '@/lib/format';
-import type { Game, GameFormat } from '@/types';
+import { spotsTaken, upcomingGamesNextTwoWeeks } from '@/lib/derive';
+import { LEVELS, LEVEL_LABELS } from '@/lib/format';
+import type { Game, GameFormat, Level } from '@/types';
 
 /* Brand tokens from the landing design system */
 const LIME = 'bg-[#c6e03a] text-[#0d0d0d] hover:bg-[#d4ec5a]';
@@ -215,7 +218,7 @@ const MEMBERS = [
   {
     name: 'Hilmi Abdelhadi',
     flag: '🇵🇸',
-    level: 'C/C+',
+    level: 'C+',
     role: 'Partnerships lead @ Tencent',
     bio: 'Setting up partnerships by day, padel monster by night, Hilmi brings vibes and soul to Padel Nomads for over 10 years now.',
     src: PHOTOS.m1,
@@ -231,7 +234,7 @@ const MEMBERS = [
   {
     name: 'Alex',
     flag: '🇻🇦',
-    level: 'C+/B-',
+    level: 'C+',
     role: 'Partnerships lead @ Tencent',
     bio: 'A seasoned consultant, Alex got into padel years ago and brings experience and professionalism to Padel Nomads.',
     src: PHOTOS.m3,
@@ -241,7 +244,7 @@ const MEMBERS = [
 const STEPS = [
   {
     num: 'I',
-    title: 'Apply to join',
+    title: 'Become a Nomad',
     text: 'We’ll ask you a couple of questions about you and your Padel level. Takes a couple of minutes.',
   },
   {
@@ -265,13 +268,33 @@ const PARTNERS = [
 
 type EventFilter = 'all' | 'king' | 'social' | 'competition' | 'clinic';
 const EVENT_FILTERS: { key: EventFilter; label: string; icon?: string }[] = [
-  { key: 'all', label: 'All' },
+  { key: 'all', label: 'All formats' },
   { key: 'king', label: 'King of the court', icon: '👑' },
   { key: 'social', label: 'Social', icon: '👥' },
   { key: 'competition', label: 'Competition', icon: '🏆' },
   { key: 'clinic', label: 'Clinic', icon: '🎾' },
 ];
 
+type LevelFilter = 'all' | Level | 'mixed';
+const LEVEL_FILTERS: { key: LevelFilter; label: string }[] = [
+  { key: 'all', label: 'All levels' },
+  { key: 'mixed', label: 'Mixed' },
+  ...LEVELS.map((l) => ({ key: l as LevelFilter, label: l })),
+];
+
+function localISODate(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function addDays(base: Date, days: number): Date {
+  const d = new Date(base);
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() + days);
+  return d;
+}
 function categoryOf(format: GameFormat): EventFilter {
   if (
     format === 'king_of_the_court' ||
@@ -385,7 +408,7 @@ function EventCard({ game, index }: { game: Game; index: number }) {
           {!finished && (
             <ul className="mt-4 space-y-1.5 text-sm text-white/70">
               <li className="flex items-center gap-2">
-                <span aria-hidden>✅</span> {LEVEL_LABELS[game.level]} levels
+                <span aria-hidden>✅</span> Level {LEVEL_LABELS[game.level]}
               </li>
               <li className="flex items-center gap-2">
                 <span aria-hidden>🎾</span> New balls for each court
@@ -442,56 +465,75 @@ function EventCard({ game, index }: { game: Game; index: number }) {
 
 function EventsSection() {
   const { games } = useMockData();
-  const [filter, setFilter] = React.useState<EventFilter>('all');
-  const [selectedDay, setSelectedDay] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [formatFilter, setFormatFilter] = React.useState<EventFilter>('all');
+  const [levelFilter, setLevelFilter] = React.useState<LevelFilter>('all');
+  const [selectedDay, setSelectedDay] = React.useState(() => localISODate());
 
-  const relevant = React.useMemo(() => {
-    const list = visibleGames(games)
-      .filter((g) => g.status !== 'cancelled')
-      .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
-    const today = new Date().toISOString().slice(0, 10);
-    const past = list.filter((g) => g.status === 'completed' && g.date <= today).slice(-1);
-    const ahead = list.filter((g) => g.date >= today && g.status !== 'completed').slice(0, 5);
-    return [...past, ...ahead];
-  }, [games]);
+  const horizon = React.useMemo(() => upcomingGamesNextTwoWeeks(games), [games]);
 
-  const filtered = React.useMemo(() => {
-    const list = filter === 'all' ? relevant : relevant.filter((g) => categoryOf(g.format) === filter);
-    return list.filter((g) => g.date === selectedDay);
-  }, [filter, relevant, selectedDay]);
-
-  const monthLabel = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const days = React.useMemo(
-    () =>
-      Array.from({ length: 10 }, (_, i) => {
-        const d = new Date();
-        d.setHours(12, 0, 0, 0);
-        d.setDate(d.getDate() + i - 1);
-        return d;
-      }),
+    () => Array.from({ length: 14 }, (_, i) => addDays(new Date(), i)),
     [],
   );
-  const gameDates = new Set(relevant.map((g) => g.date));
+
+  const filteredHorizon = React.useMemo(() => {
+    return horizon.filter((g) => {
+      if (formatFilter !== 'all' && categoryOf(g.format) !== formatFilter) return false;
+      if (levelFilter !== 'all' && g.level !== levelFilter) return false;
+      return true;
+    });
+  }, [horizon, formatFilter, levelFilter]);
+
+  const filtered = React.useMemo(
+    () => filteredHorizon.filter((g) => g.date === selectedDay),
+    [filteredHorizon, selectedDay],
+  );
+
+  const gameDates = React.useMemo(
+    () => new Set(filteredHorizon.map((g) => g.date)),
+    [filteredHorizon],
+  );
+
+  React.useEffect(() => {
+    if (gameDates.has(selectedDay)) return;
+    const next = days.find((d) => gameDates.has(localISODate(d)));
+    if (next) setSelectedDay(localISODate(next));
+  }, [gameDates, selectedDay, days]);
+
+  const startLabel = days[0].toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const endLabel = days[13].toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const rangeLabel = `${startLabel} – ${endLabel}`;
+
+  const emptyFormat = EVENT_FILTERS.find((f) => f.key === formatFilter)?.label.toLowerCase();
+  const emptyLevel =
+    levelFilter === 'all'
+      ? ''
+      : levelFilter === 'mixed'
+        ? 'mixed-level'
+        : LEVEL_LABELS[levelFilter];
 
   return (
     <section id="events" className="mx-auto max-w-5xl scroll-mt-28 px-4 py-20 sm:py-28">
-      <div className="mb-7 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-        <button
-          type="button"
-          className="font-heading flex items-center gap-2 text-left text-3xl font-semibold tracking-tight text-white sm:text-4xl"
-        >
-          {monthLabel}
-          <ChevronDown className="size-5 text-white/40" />
-        </button>
+      <div className="mb-3">
+        <Eyebrow>Next 2 weeks</Eyebrow>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <h2 className="font-heading text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            {rangeLabel}
+          </h2>
+          <p className="text-sm text-white/40">{horizon.length} games scheduled</p>
+        </div>
+      </div>
+
+      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2">
           {EVENT_FILTERS.map((f) => (
             <button
               key={f.key}
               type="button"
-              onClick={() => setFilter(f.key)}
+              onClick={() => setFormatFilter(f.key)}
               className={cn(
                 'rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
-                filter === f.key
+                formatFilter === f.key
                   ? 'border-white bg-white text-black'
                   : 'border-white/20 text-white/65 hover:border-white/45 hover:text-white',
               )}
@@ -501,13 +543,39 @@ function EventsSection() {
             </button>
           ))}
         </div>
+
+        <Select value={levelFilter} onValueChange={(v) => setLevelFilter(v as LevelFilter)}>
+          <SelectTrigger
+            className={cn(
+              'h-9 w-full min-w-[10.5rem] rounded-full border-white/20 bg-transparent px-3.5 text-xs font-medium text-white shadow-none sm:w-auto',
+              'hover:border-white/45 hover:bg-white/5',
+              'focus-visible:border-[#c6e03a] focus-visible:ring-[#c6e03a]/30',
+              '[&_svg]:text-white/50',
+              levelFilter !== 'all' && 'border-[#c6e03a]/60 text-[#c6e03a] [&_svg]:text-[#c6e03a]',
+            )}
+          >
+            <SelectValue placeholder="All levels" />
+          </SelectTrigger>
+          <SelectContent className="border-white/10 bg-[#161616] text-white">
+            {LEVEL_FILTERS.map((f) => (
+              <SelectItem
+                key={f.key}
+                value={f.key}
+                className="text-xs text-white/80 focus:bg-white/10 focus:text-white data-highlighted:bg-white/10 data-highlighted:text-white"
+              >
+                {f.key === 'all' || f.key === 'mixed' ? f.label : LEVEL_LABELS[f.key]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="mb-8 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {days.map((d) => {
-          const iso = d.toISOString().slice(0, 10);
+          const iso = localISODate(d);
           const active = iso === selectedDay;
           const hasGame = gameDates.has(iso);
+          const isToday = iso === localISODate();
           return (
             <button
               key={iso}
@@ -524,8 +592,16 @@ function EventsSection() {
             >
               <span className="text-lg font-semibold leading-none">{d.getDate()}</span>
               <span className="mt-1 text-[10px] tracking-[0.14em] uppercase">
-                {d.toLocaleDateString('en-GB', { weekday: 'short' })}
+                {isToday ? 'Today' : d.toLocaleDateString('en-GB', { weekday: 'short' })}
               </span>
+              {hasGame && (
+                <span
+                  className={cn(
+                    'mt-1.5 size-1 rounded-full',
+                    active ? 'bg-[#c6e03a]' : 'bg-white/50',
+                  )}
+                />
+              )}
             </button>
           );
         })}
@@ -537,8 +613,8 @@ function EventsSection() {
         ))}
         {filtered.length === 0 && (
           <div className="rounded-[28px] border border-white/10 px-8 py-16 text-center text-sm text-white/45">
-            No {EVENT_FILTERS.find((f) => f.key === filter)?.label.toLowerCase()} games on this day —
-            try another filter or date.
+            No {emptyFormat}
+            {emptyLevel ? ` · ${emptyLevel}` : ''} games on this day — try another level, format, or date.
           </div>
         )}
       </div>
@@ -648,7 +724,7 @@ export default function LandingPage() {
                 LIME,
               )}
             >
-              + Apply to join
+              + Become a Nomad
             </Link>
           </div>
 
@@ -807,7 +883,7 @@ export default function LandingPage() {
             LIME,
           )}
         >
-          Apply to join
+          Become a Nomad
         </Link>
       </section>
 
@@ -857,7 +933,7 @@ export default function LandingPage() {
             </Link>
             <span className="text-white/20">·</span>
             <Link href="/apply" className="transition-colors hover:text-white">
-              Apply
+              Become a Nomad
             </Link>
           </div>
         </div>

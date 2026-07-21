@@ -24,10 +24,10 @@ import type { Offer } from '@/types';
 
 const SEGMENTS = [
   'All marketing-opted-in players',
-  'Advanced & professional players',
+  'B & A players',
   'Active in last 30 days',
   'Women',
-  'Beginners',
+  'E & D players',
 ];
 
 const emptyForm = { title: '', partnerName: '', description: '', promoCode: '', link: '', startDate: '', endDate: '' };

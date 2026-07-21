@@ -113,7 +113,7 @@ export default function WhatsAppPage() {
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All opted-in players">All opted-in players ({optedIn})</SelectItem>
-                    <SelectItem value="Advanced players">Segment: Advanced players</SelectItem>
+                    <SelectItem value="B+ and A players">Segment: B+ and A players</SelectItem>
                     <SelectItem value="Active last 30 days">Segment: Active last 30 days</SelectItem>
                     <SelectItem value="Tuesday Americano roster">Game roster: Tuesday Americano</SelectItem>
                   </SelectContent>

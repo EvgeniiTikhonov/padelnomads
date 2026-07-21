@@ -1,4 +1,6 @@
-import type { GameFormat, GameStatus, KarmaTier, Level, ParticipantStatus, PreferredSide, Gender, UserStatus, KarmaEventType } from '@/types';
+import { LEVELS, type GameFormat, type GameStatus, type KarmaTier, type Level, type ParticipantStatus, type PreferredSide, type Gender, type UserStatus, type KarmaEventType } from '@/types';
+
+export { LEVELS };
 
 export const FORMAT_LABELS: Record<GameFormat, string> = {
   social_shuffle: 'Social Shuffle',
@@ -10,11 +12,18 @@ export const FORMAT_LABELS: Record<GameFormat, string> = {
   americano: 'Americano',
 };
 
+/** Letter labels aligned to the Viya padel level structure (Dubai Golf). */
 export const LEVEL_LABELS: Record<Level | 'mixed', string> = {
-  beginner: 'Beginner',
-  intermediate: 'Intermediate',
-  advanced: 'Advanced',
-  professional: 'Professional',
+  E: 'E — Entry',
+  D: 'D',
+  'D+': 'D+',
+  C: 'C — Intermediate',
+  'C Strong': 'C Strong',
+  'C+': 'C+',
+  B: 'B — Advanced',
+  'B+': 'B+',
+  A: 'A — Pro',
+  'A+': 'A+ — Elite',
   mixed: 'Mixed',
 };
 
