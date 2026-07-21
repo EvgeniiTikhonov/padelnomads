@@ -1,0 +1,1 @@
+self.__SSG_MANIFEST=new Set(["\u002Fadmin\u002Fgames\u002F[id]","\u002Fapp\u002Fgames\u002F[id]","\u002Fapp\u002Fplayers\u002F[id]"]);self.__SSG_MANIFEST_CB&&self.__SSG_MANIFEST_CB()

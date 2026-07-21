@@ -1,15 +1,38 @@
 # Padel Nomads
 
 A closed, curated digital platform for the Padel Nomads padel community. This repository
-contains the MVP work split into two apps:
+contains the MVP work split into:
 
-- **`frontend/`** — React + Vite + TypeScript + Tailwind. Includes a fully interactive,
-  self-contained **prototype** of the MVP (public landing, application/onboarding, member
-  area, and admin area) backed by an in-browser mock data store, so it runs with no backend.
+- **`html-prototype/`** — **Static HTML export** of the clickable prototype. Open with
+  `npx serve html-prototype` (no Node app build required to view).
+- **`prototype/`** — Next.js source for that clickable prototype (mock data, admin scoring,
+  verified levels, public profiles, leaderboard). Run with `cd prototype && npm run dev`.
+  Regenerate the static export with `npm run export:html`.
+- **`frontend/`** — React + Vite + TypeScript + Tailwind app (also includes an older
+  in-browser mock prototype).
 - **`backend/`** — Express + Prisma (PostgreSQL) API scaffolding (auth, applications, games,
   leaderboard, offers, uploads, stats).
 
-## Frontend prototype
+## Static HTML prototype (easiest to share)
+
+```bash
+npx serve html-prototype
+```
+
+See `html-prototype/README.md` for details.
+
+## Next.js clickable prototype
+
+```bash
+cd prototype
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. Use the top-right **Prototype: view as…** switcher for
+Visitor / Player / Admin.
+
+## Frontend (Vite)
 
 ```bash
 cd frontend
@@ -46,5 +69,5 @@ Requires a PostgreSQL database. See `backend/prisma/schema.prisma` for the data 
 
 ## Project status
 
-The frontend prototype demonstrates the full MVP scope and user flows. The backend provides
-the API/data foundation to back those flows in a future iteration.
+The Next.js / HTML prototype demonstrates the full MVP scope and user flows. The backend
+provides the API/data foundation to back those flows in a future iteration.

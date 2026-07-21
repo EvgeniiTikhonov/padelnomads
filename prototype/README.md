@@ -19,6 +19,18 @@ npm run dev
 Open http://localhost:3000 and use the **"Prototype: view as…"** dropdown (top-right) to switch between
 Visitor, Player (approved/pending/rejected/banned), and Admin.
 
+## Static HTML export
+
+```bash
+npm run export:html
+```
+
+Writes a fully static site to `../html-prototype/` (committed in the repo). Serve it with:
+
+```bash
+npx serve ../html-prototype
+```
+
 ## Where things live
 
 - `src/types/` — domain types mirroring PRD §15 (field names = future API contract)
