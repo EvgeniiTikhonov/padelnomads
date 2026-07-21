@@ -47,6 +47,7 @@ export type Application = {
   preferredSide: string;
   gender?: string;
   referralSource?: string;
+  referrerPhoneNumber?: string;
   proofOfSkillFileUrl?: string;
   status: ApplicationStatus;
   reviewedBy?: string;

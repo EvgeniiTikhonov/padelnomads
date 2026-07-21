@@ -5,6 +5,7 @@ import {
   PREFERRED_SIDES,
   GENDER_OPTIONS,
   REFERRAL_SOURCES,
+  FRIEND_REFERRAL_LABEL,
 } from '@/lib/applicationFields';
 import { actions } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
@@ -18,6 +19,7 @@ type Values = {
   preferredSide: string;
   gender: string;
   referralSource: string;
+  referrerPhoneNumber: string;
 };
 
 const EMPTY: Values = {
@@ -28,6 +30,7 @@ const EMPTY: Values = {
   preferredSide: '',
   gender: '',
   referralSource: '',
+  referrerPhoneNumber: '',
 };
 
 export default function ApplicationForm() {
@@ -38,13 +41,27 @@ export default function ApplicationForm() {
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
-  const set = (k: keyof Values, v: string) => setValues((p) => ({ ...p, [k]: v }));
+  const set = (k: keyof Values, v: string) =>
+    setValues((p) => {
+      const next = { ...p, [k]: v };
+      // Clear the friend's phone number if the referral is no longer a friend.
+      if (k === 'referralSource' && v !== FRIEND_REFERRAL_LABEL) {
+        next.referrerPhoneNumber = '';
+      }
+      return next;
+    });
+
+  const isFriendReferral = values.referralSource === FRIEND_REFERRAL_LABEL;
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!values.name || !values.level || !values.preferredSide || !values.phoneNumber) {
       setError('Please complete all required fields.');
+      return;
+    }
+    if (isFriendReferral && !values.referrerPhoneNumber) {
+      setError("Please add your friend's phone number.");
       return;
     }
     const application = actions.submitApplication({
@@ -55,6 +72,7 @@ export default function ApplicationForm() {
       preferredSide: values.preferredSide,
       gender: values.gender || undefined,
       referralSource: values.referralSource || undefined,
+      referrerPhoneNumber: isFriendReferral ? values.referrerPhoneNumber : undefined,
       proofOfSkillFileUrl: proofName || undefined,
     });
     setSubmitted(true);
@@ -89,6 +107,37 @@ export default function ApplicationForm() {
   return (
     <form onSubmit={handleSubmit} className="border border-brand-black/10 bg-white p-8 sm:p-10">
       <div className="space-y-8">
+        <Field label="How did you hear about us?">
+          <select
+            className="form-control"
+            value={values.referralSource}
+            onChange={(e) => set('referralSource', e.target.value)}
+          >
+            <option value="">Select…</option>
+            {REFERRAL_SOURCES.map((o) => (
+              <option key={o.value} value={o.label}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {isFriendReferral && (
+          <Field
+            label="Friend's phone number"
+            required
+            hint="Share the phone number of the friend who referred you."
+          >
+            <input
+              className="form-control"
+              type="tel"
+              value={values.referrerPhoneNumber}
+              onChange={(e) => set('referrerPhoneNumber', e.target.value)}
+              placeholder="+971 50 000 0000"
+            />
+          </Field>
+        )}
+
         <Field label="Full name" required>
           <input
             className="form-control"
@@ -148,21 +197,6 @@ export default function ApplicationForm() {
           <select className="form-control" value={values.gender} onChange={(e) => set('gender', e.target.value)}>
             <option value="">Select…</option>
             {GENDER_OPTIONS.map((o) => (
-              <option key={o.value} value={o.label}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="How did you hear about us?">
-          <select
-            className="form-control"
-            value={values.referralSource}
-            onChange={(e) => set('referralSource', e.target.value)}
-          >
-            <option value="">Select…</option>
-            {REFERRAL_SOURCES.map((o) => (
               <option key={o.value} value={o.label}>
                 {o.label}
               </option>

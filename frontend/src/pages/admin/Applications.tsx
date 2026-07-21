@@ -158,6 +158,7 @@ function ApplicationModal({
         <Row label="Preferred side" value={a.preferredSide} />
         <Row label="Gender" value={a.gender ?? '—'} />
         <Row label="Referral" value={a.referralSource ?? '—'} />
+        {a.referrerPhoneNumber && <Row label="Referred by (phone)" value={a.referrerPhoneNumber} />}
         <Row label="Submitted" value={formatLongDate(a.createdAt)} />
         <Row label="Proof of skill" value={a.proofOfSkillFileUrl ?? 'Not provided'} />
       </dl>

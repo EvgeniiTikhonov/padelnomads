@@ -4,6 +4,7 @@ export type ApplicationFormValues = {
   proofOfSkillFileUrl?: string;
   gender?: string;
   referralSource?: string;
+  referrerPhoneNumber?: string;
 };
 
 export type ApplicationFieldType = 'select' | 'text' | 'file';
@@ -40,13 +41,11 @@ export const GENDER_OPTIONS = [
 ] as const;
 
 export const REFERRAL_SOURCES = [
-  { value: 'friend', label: 'Friend or player' },
+  { value: 'friend', label: 'Friend' },
   { value: 'instagram', label: 'Instagram' },
-  { value: 'facebook', label: 'Facebook' },
-  { value: 'event', label: 'Event or tournament' },
-  { value: 'search', label: 'Search engine' },
-  { value: 'other', label: 'Other' },
 ] as const;
+
+export const FRIEND_REFERRAL_LABEL = REFERRAL_SOURCES[0].label;
 
 export const APPLICATION_FORM_FIELDS: ApplicationFormField[] = [
   {
