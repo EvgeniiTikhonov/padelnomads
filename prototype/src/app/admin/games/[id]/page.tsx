@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, CalendarDays, Clock, MapPin, Users, Play, Ban, Trash2,
-  UserPlus, Search, AlertTriangle, MessageCircle, Trophy, X,
+  UserPlus, Search, AlertTriangle, MessageCircle, Trophy, X, Info, ArrowUpDown,
+  ChevronRight, CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -21,19 +22,24 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { GameStatusBadge, KarmaTierBadge, ParticipantStatusBadge } from '@/components/badges';
+import { GameStatusBadge, KarmaTierBadge, ParticipantStatusBadge, VerifiedBadge } from '@/components/badges';
+import { GameResults } from '@/components/game-results';
 import { useMockData } from '@/data/provider';
 import { spotsTaken } from '@/lib/derive';
 import { FORMAT_LABELS, LEVEL_LABELS, formatDateLong, initials } from '@/lib/format';
-import type { GameParticipant, User } from '@/types';
+import { FORMAT_CONFIG } from '@/lib/gameFormats';
+import { computeStandings, matchDecided } from '@/lib/scoring';
+import type { Game, GameMatch, GameParticipant, GameTeam, User } from '@/types';
+
+type LiveStep = 'attendance' | 'scores';
 
 export default function AdminGameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const {
-    games, participants, users, phones,
+    games, participants, teams, matches, users, phones,
     setGameStatus, deleteGame, addPlayerToGame, removePlayerFromGame,
-    markAttendance, markPayment, setResult, publishResults,
+    markAttendance, markPayment, startGame, updateMatchScore, generateNextRound, collectScores,
   } = useMockData();
 
   const [addOpen, setAddOpen] = React.useState(false);
@@ -41,6 +47,8 @@ export default function AdminGameDetailPage() {
   const [overrideTarget, setOverrideTarget] = React.useState<User | null>(null);
   const [overrideReason, setOverrideReason] = React.useState('');
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [step, setStep] = React.useState<LiveStep>('attendance');
+  const [currentRound, setCurrentRound] = React.useState(0);
 
   const game = games.find((g) => g.id === id && !g.deleted);
   if (!game) {
@@ -52,12 +60,19 @@ export default function AdminGameDetailPage() {
     );
   }
 
+  const cfg = FORMAT_CONFIG[game.format];
   const roster = participants
     .filter((p) => p.gameId === game.id)
     .sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
   const activeRoster = roster.filter((p) => !['cancelled'].includes(p.status));
   const taken = spotsTaken(participants, game.id);
   const userFor = (userId: string) => users.find((u) => u.id === userId);
+  const gameTeams = teams.filter((t) => t.gameId === game.id);
+  const gameMatches = matches.filter((m) => m.gameId === game.id);
+  const totalRounds = cfg.rounds.length;
+  const roundsGenerated = gameMatches.length > 0 ? Math.max(...gameMatches.map((m) => m.round)) + 1 : 0;
+  const allDecided = gameMatches.length > 0 && gameMatches.every(matchDecided);
+  const canCollect = allDecided && roundsGenerated >= totalRounds;
 
   const candidates = users.filter((u) => {
     if (u.role !== 'player') return false;
@@ -88,7 +103,7 @@ export default function AdminGameDetailPage() {
     setOverrideReason('');
   };
 
-  const resultsReady = activeRoster.some((p) => p.position != null);
+  const showRoster = game.status === 'upcoming' || game.status === 'completed' || (game.status === 'live' && step === 'attendance');
 
   return (
     <div className="space-y-5">
@@ -108,7 +123,7 @@ export default function AdminGameDetailPage() {
         <div className="flex flex-wrap gap-2">
           {game.status === 'upcoming' && (
             <>
-              <Button onClick={() => setGameStatus(game.id, 'live')}>
+              <Button onClick={() => { startGame(game.id); setStep('attendance'); setCurrentRound(0); }}>
                 <Play className="size-4" /> Start game
               </Button>
               <Button variant="outline" onClick={() => setGameStatus(game.id, 'cancelled')}>
@@ -116,9 +131,9 @@ export default function AdminGameDetailPage() {
               </Button>
             </>
           )}
-          {game.status === 'live' && (
-            <Button onClick={() => publishResults(game.id)} disabled={!resultsReady}>
-              <Trophy className="size-4" /> Publish results &amp; complete
+          {game.status === 'live' && step === 'scores' && (
+            <Button onClick={() => collectScores(game.id)} disabled={!canCollect}>
+              <Trophy className="size-4" /> Collect scores
             </Button>
           )}
           <Button
@@ -141,65 +156,106 @@ export default function AdminGameDetailPage() {
           <span className="flex items-center gap-1.5"><Users className="size-4 text-primary" /> {taken}/{game.capacity} · {game.courts} courts</span>
           <Badge variant="secondary">{LEVEL_LABELS[game.level]}</Badge>
           {game.price != null && <Badge variant="outline">AED {game.price}</Badge>}
-          {game.reminderSchedule && game.reminderSchedule.length > 0 && (
-            <Badge variant="outline" className="gap-1"><MessageCircle className="size-3" /> Reminders: {game.reminderSchedule.join(', ')}</Badge>
-          )}
         </CardContent>
       </Card>
+
+      {/* Format rules reference (pre-game + attendance step) */}
+      {(game.status === 'upcoming' || (game.status === 'live' && step === 'attendance')) && (
+        <FormatRulesCard format={game.format} />
+      )}
+
+      {/* Live step 1: confirm attendance */}
+      {game.status === 'live' && step === 'attendance' && (
+        <Card className="rounded-2xl border-primary/30 bg-primary/[0.03] py-0 shadow-sm">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div>
+              <p className="flex items-center gap-1.5 font-heading text-base font-semibold">
+                <CheckCircle2 className="size-4 text-primary" /> Step 1 · Confirm attendance
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Everyone is pre-marked on-time & paid. Adjust any latecomers or no-shows below, then continue to scoring.
+              </p>
+            </div>
+            <Button onClick={() => { if (gameTeams.length === 0) startGame(game.id); setStep('scores'); setCurrentRound(0); }}>
+              Confirm &amp; enter scores <ChevronRight className="size-4" />
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Live step 2: match scores by round */}
+      {game.status === 'live' && step === 'scores' && (
+        <ScoringStep
+          game={game}
+          teams={gameTeams}
+          matches={gameMatches}
+          users={users}
+          currentRound={Math.min(currentRound, Math.max(0, roundsGenerated - 1))}
+          roundsGenerated={roundsGenerated}
+          totalRounds={totalRounds}
+          canCollect={canCollect}
+          onBack={() => setStep('attendance')}
+          onSelectRound={setCurrentRound}
+          onScore={updateMatchScore}
+          onNextRound={(from) => { generateNextRound(game.id, from); setCurrentRound(from + 1); }}
+          onCollect={() => collectScores(game.id)}
+        />
+      )}
+
+      {/* Completed: stored results (also shown to players in their history) */}
+      {game.status === 'completed' && gameTeams.length > 0 && (
+        <GameResults game={game} teams={gameTeams} matches={gameMatches} users={users} />
+      )}
 
       {/* Roster */}
-      <Card className="rounded-2xl py-0 shadow-sm">
-        <CardHeader className="flex-row items-center justify-between p-4 pb-0">
-          <CardTitle className="font-heading text-base">
-            Players ({activeRoster.filter((p) => p.status !== 'waitlisted').length}/{game.capacity})
-          </CardTitle>
-          {game.status !== 'completed' && game.status !== 'cancelled' && (
-            <Button size="sm" onClick={() => setAddOpen(true)}>
-              <UserPlus className="size-3.5" /> Add player
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent className="p-4 pt-2">
-          <div className="divide-y">
-            {activeRoster.length === 0 && (
-              <p className="py-6 text-center text-sm text-muted-foreground">No players yet.</p>
+      {showRoster && (
+        <Card className="rounded-2xl py-0 shadow-sm">
+          <CardHeader className="flex-row items-center justify-between p-4 pb-0">
+            <CardTitle className="font-heading text-base">
+              Players ({activeRoster.filter((p) => p.status !== 'waitlisted').length}/{game.capacity})
+            </CardTitle>
+            {game.status !== 'completed' && game.status !== 'cancelled' && (
+              <Button size="sm" onClick={() => setAddOpen(true)}>
+                <UserPlus className="size-3.5" /> Add player
+              </Button>
             )}
-            {activeRoster.map((p) => {
-              const u = userFor(p.userId);
-              if (!u) return null;
-              return (
-                <ParticipantRow
-                  key={p.id}
-                  participant={p}
-                  user={u}
-                  gameStatus={game.status}
-                  onRemove={() => removePlayerFromGame(game.id, u.id)}
-                  onAttendance={(v) => markAttendance(p.id, v)}
-                  onPayment={(v) => markPayment(p.id, v)}
-                  onResult={(pos, pts) => setResult(p.id, pos, pts)}
-                />
-              );
-            })}
-          </div>
-          {roster.some((p) => p.status === 'cancelled') && (
-            <div className="mt-3 border-t pt-3">
-              <p className="mb-1 text-xs font-semibold text-muted-foreground">Cancelled</p>
-              {roster.filter((p) => p.status === 'cancelled').map((p) => {
+          </CardHeader>
+          <CardContent className="p-4 pt-2">
+            <div className="divide-y">
+              {activeRoster.length === 0 && (
+                <p className="py-6 text-center text-sm text-muted-foreground">No players yet.</p>
+              )}
+              {activeRoster.map((p) => {
                 const u = userFor(p.userId);
-                return u ? (
-                  <p key={p.id} className="py-1 text-sm text-muted-foreground line-through">{u.name}</p>
-                ) : null;
+                if (!u) return null;
+                const team = gameTeams.find((t) => t.id === p.teamId);
+                return (
+                  <ParticipantRow
+                    key={p.id}
+                    participant={p}
+                    user={u}
+                    teamName={team?.name}
+                    gameStatus={game.status}
+                    onRemove={() => removePlayerFromGame(game.id, u.id)}
+                    onAttendance={(v) => markAttendance(p.id, v)}
+                    onPayment={(v) => markPayment(p.id, v)}
+                  />
+                );
               })}
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {game.status === 'live' && (
-        <p className="text-center text-xs text-muted-foreground">
-          Mark attendance and payment per player, enter final positions and points, then publish results.
-          Publishing updates the leaderboard, player history, and karma (+2 per on-time player).
-        </p>
+            {roster.some((p) => p.status === 'cancelled') && (
+              <div className="mt-3 border-t pt-3">
+                <p className="mb-1 text-xs font-semibold text-muted-foreground">Cancelled</p>
+                {roster.filter((p) => p.status === 'cancelled').map((p) => {
+                  const u = userFor(p.userId);
+                  return u ? (
+                    <p key={p.id} className="py-1 text-sm text-muted-foreground line-through">{u.name}</p>
+                  ) : null;
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Add player dialog */}
@@ -224,7 +280,11 @@ export default function AdminGameDetailPage() {
                 </Avatar>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{u.name}</p>
-                  <p className="text-xs text-muted-foreground">{LEVEL_LABELS[u.level]} · {u.points} pts</p>
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                    {LEVEL_LABELS[u.level]}
+                    {u.levelVerified && <VerifiedBadge className="size-3.5" />}
+                    · {u.points} pts
+                  </p>
                 </div>
                 {u.status === 'banned' ? (
                   <Badge variant="destructive">Banned</Badge>
@@ -288,16 +348,203 @@ export default function AdminGameDetailPage() {
   );
 }
 
+function FormatRulesCard({ format }: { format: Game['format'] }) {
+  const cfg = FORMAT_CONFIG[format];
+  const roundsLabel = cfg.roundMinutes
+    ? `${cfg.rounds.length} rounds × ${cfg.roundMinutes} min`
+    : `${cfg.rounds.length} stages`;
+  return (
+    <Card className="rounded-2xl border-primary/20 bg-primary/[0.03] py-0 shadow-sm">
+      <CardContent className="space-y-2 p-4 text-sm">
+        <p className="flex items-center gap-1.5 font-heading text-base font-semibold">
+          <Info className="size-4 text-primary" /> {FORMAT_LABELS[format]} — format rules
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline">{cfg.warmupMinutes} min warm-up</Badge>
+          <Badge variant="outline">{roundsLabel}</Badge>
+          <Badge variant="outline">{cfg.pointRule}</Badge>
+          {cfg.courtMovement && <Badge variant="outline" className="gap-1"><ArrowUpDown className="size-3" /> Winners up · losers down</Badge>}
+          {cfg.changePartners && <Badge variant="outline">Partners rotate each round</Badge>}
+          <Badge variant="outline" className="capitalize">{cfg.rankingBasis} ranking</Badge>
+        </div>
+        {cfg.boostRule && <p className="text-muted-foreground"><span className="font-medium text-foreground">Boosted points:</span> {cfg.boostRule}</p>}
+        {cfg.streakBonusFromRound != null && (
+          <p className="text-muted-foreground">
+            <span className="font-medium text-foreground">Streak bonus:</span> from Round {cfg.streakBonusFromRound}, two consecutive wins add +1 to that round&apos;s score.
+          </p>
+        )}
+        {cfg.notes.map((n) => (
+          <p key={n} className="text-muted-foreground">· {n}</p>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScoringStep({
+  game, teams, matches, users, currentRound, roundsGenerated, totalRounds, canCollect,
+  onBack, onSelectRound, onScore, onNextRound, onCollect,
+}: {
+  game: Game;
+  teams: GameTeam[];
+  matches: GameMatch[];
+  users: User[];
+  currentRound: number;
+  roundsGenerated: number;
+  totalRounds: number;
+  canCollect: boolean;
+  onBack: () => void;
+  onSelectRound: (r: number) => void;
+  onScore: (matchId: string, side: 'A' | 'B', value: number | null) => void;
+  onNextRound: (fromRound: number) => void;
+  onCollect: () => void;
+}) {
+  const cfg = FORMAT_CONFIG[game.format];
+  const standings = computeStandings(game, teams, matches);
+  const teamName = (tid: string) => teams.find((t) => t.id === tid)?.name ?? 'Team';
+  const playersOf = (tid: string) =>
+    (teams.find((t) => t.id === tid)?.playerIds ?? [])
+      .map((uid) => users.find((u) => u.id === uid)?.name.split(' ')[0] ?? 'Player')
+      .join(' · ');
+
+  const roundMatches = matches
+    .filter((m) => m.round === currentRound)
+    .sort((a, b) => a.court - b.court);
+  const roundDecided = roundMatches.length > 0 && roundMatches.every(matchDecided);
+  const isLastGenerated = currentRound === roundsGenerated - 1;
+  const moreRounds = roundsGenerated < totalRounds;
+
+  return (
+    <div className="space-y-4">
+      <Card className="rounded-2xl py-0 shadow-sm">
+        <CardHeader className="gap-2 p-4 pb-0">
+          <div className="flex items-center justify-between">
+            <CardTitle className="font-heading text-base">Step 2 · Match scores</CardTitle>
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              <ArrowLeft className="size-3.5" /> Attendance
+            </Button>
+          </div>
+          {/* Round tabs */}
+          <div className="flex flex-wrap gap-1.5">
+            {Array.from({ length: roundsGenerated }).map((_, r) => (
+              <Button
+                key={r}
+                size="sm"
+                variant={r === currentRound ? 'default' : 'outline'}
+                onClick={() => onSelectRound(r)}
+              >
+                {cfg.rounds[r]?.label ?? `Round ${r + 1}`}
+                {cfg.rounds[r]?.boosted && <span className="ml-1 text-[10px]">★</span>}
+              </Button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2 p-4 pt-3">
+          {cfg.rounds[currentRound]?.boosted && (
+            <p className="text-xs text-amber-600">
+              Boosted round — winners earn court points (Court 1–2 → 3, Court 3–4 → 2, else 1){cfg.streakBonusFromRound != null ? ', plus +1 for a 2-win streak.' : '.'}
+            </p>
+          )}
+          {roundMatches.map((m) => {
+            const aWon = matchDecided(m) && (m.scoreA as number) > (m.scoreB as number);
+            const bWon = matchDecided(m) && (m.scoreB as number) > (m.scoreA as number);
+            return (
+              <div key={m.id} className="flex flex-wrap items-center gap-2 rounded-xl border p-2.5">
+                <Badge variant={m.court <= 2 ? 'default' : 'secondary'} className="shrink-0">Court {m.court}</Badge>
+                <div className={`min-w-0 flex-1 text-right text-sm ${aWon ? 'font-semibold' : ''}`}>
+                  {teamName(m.teamAId)}
+                  <span className="block text-xs text-muted-foreground">{playersOf(m.teamAId)}</span>
+                </div>
+                <Input
+                  type="number" min={0} aria-label="Team A score"
+                  className="h-9 w-14 text-center"
+                  value={m.scoreA ?? ''}
+                  onChange={(e) => onScore(m.id, 'A', e.target.value === '' ? null : Math.max(0, Number(e.target.value)))}
+                />
+                <span className="text-muted-foreground">:</span>
+                <Input
+                  type="number" min={0} aria-label="Team B score"
+                  className="h-9 w-14 text-center"
+                  value={m.scoreB ?? ''}
+                  onChange={(e) => onScore(m.id, 'B', e.target.value === '' ? null : Math.max(0, Number(e.target.value)))}
+                />
+                <div className={`min-w-0 flex-1 text-sm ${bWon ? 'font-semibold' : ''}`}>
+                  {teamName(m.teamBId)}
+                  <span className="block text-xs text-muted-foreground">{playersOf(m.teamBId)}</span>
+                </div>
+              </div>
+            );
+          })}
+          {roundMatches.length === 0 && (
+            <p className="py-6 text-center text-sm text-muted-foreground">No matches for this round.</p>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <p className="text-xs text-muted-foreground">
+              Round {currentRound + 1} of {totalRounds}. Enter a decisive score for each court.
+            </p>
+            {isLastGenerated && moreRounds ? (
+              <Button size="sm" disabled={!roundDecided} onClick={() => onNextRound(currentRound)}>
+                Next round <ChevronRight className="size-4" />
+              </Button>
+            ) : isLastGenerated && !moreRounds ? (
+              <Button size="sm" disabled={!canCollect} onClick={onCollect}>
+                <Trophy className="size-4" /> Collect scores
+              </Button>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Live standings preview */}
+      <Card className="rounded-2xl py-0 shadow-sm">
+        <CardHeader className="p-4 pb-0">
+          <CardTitle className="font-heading text-base">Live standings</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-3">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[360px] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="pb-2 pr-2 font-medium">#</th>
+                  <th className="pb-2 pr-3 font-medium">Team</th>
+                  <th className="pb-2 pr-3 text-center font-medium">Court</th>
+                  <th className="pb-2 pr-3 text-center font-medium">Wins</th>
+                  <th className="pb-2 text-center font-medium">Points</th>
+                </tr>
+              </thead>
+              <tbody>
+                {standings.map((s) => (
+                  <tr key={s.team.id} className="border-t">
+                    <td className="py-2 pr-2 font-semibold">{s.rank}</td>
+                    <td className="py-2 pr-3">
+                      <span className="font-medium">{s.team.name}</span>
+                      <span className="block text-xs text-muted-foreground">{playersOf(s.team.id)}</span>
+                    </td>
+                    <td className="py-2 pr-3 text-center">{s.finalCourt}</td>
+                    <td className="py-2 pr-3 text-center">{s.wins}</td>
+                    <td className="py-2 text-center font-semibold text-primary">{s.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function ParticipantRow({
-  participant: p, user: u, gameStatus, onRemove, onAttendance, onPayment, onResult,
+  participant: p, user: u, teamName, gameStatus, onRemove, onAttendance, onPayment,
 }: {
   participant: GameParticipant;
   user: User;
+  teamName?: string;
   gameStatus: string;
   onRemove: () => void;
   onAttendance: (v: NonNullable<GameParticipant['attendance']>) => void;
   onPayment: (v: NonNullable<GameParticipant['paymentStatus']>) => void;
-  onResult: (position: number, points: number) => void;
 }) {
   const inGame = gameStatus === 'live';
   const past = gameStatus === 'completed';
@@ -311,8 +558,12 @@ function ParticipantRow({
         <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
           {u.name}
           <KarmaTierBadge tier={u.karmaTier} />
+          {teamName && <Badge variant="outline" className="text-[10px]">{teamName}</Badge>}
         </p>
-        <p className="text-xs text-muted-foreground">{LEVEL_LABELS[u.level]}</p>
+        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+          {LEVEL_LABELS[u.level]}
+          {u.levelVerified && <VerifiedBadge className="size-3.5" />}
+        </p>
       </div>
 
       {past ? (
@@ -343,16 +594,6 @@ function ParticipantRow({
               <SelectItem value="waived">Waived</SelectItem>
             </SelectContent>
           </Select>
-          <Input
-            type="number" min={1} placeholder="Pos"
-            className="h-8 w-16"
-            value={p.position ?? ''}
-            onChange={(e) => {
-              const pos = Number(e.target.value);
-              if (pos > 0) onResult(pos, Math.max(2, 22 - pos * 2));
-            }}
-          />
-          {p.pointsAwarded ? <span className="text-xs text-green-600">+{p.pointsAwarded}</span> : null}
         </div>
       ) : (
         <div className="flex items-center gap-2">

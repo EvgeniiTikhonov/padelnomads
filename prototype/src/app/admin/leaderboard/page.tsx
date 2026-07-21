@@ -18,6 +18,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { VerifiedBadge } from '@/components/badges';
 import { useMockData } from '@/data/provider';
 import { leaderboard, visibleGames } from '@/lib/derive';
 import { LEVEL_LABELS, formatDate } from '@/lib/format';
@@ -71,7 +72,10 @@ export default function AdminLeaderboardPage() {
                     <TableCell className="pl-4 font-semibold">{r.rank}</TableCell>
                     <TableCell className="font-medium">{r.user.name}</TableCell>
                     <TableCell className="hidden sm:table-cell">
-                      <Badge variant="secondary">{LEVEL_LABELS[r.user.level]}</Badge>
+                      <span className="inline-flex items-center gap-1">
+                        <Badge variant="secondary">{LEVEL_LABELS[r.user.level]}</Badge>
+                        {r.user.levelVerified && <VerifiedBadge />}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">{r.gamesPlayed}</TableCell>
                     <TableCell className="text-right font-heading font-bold">{r.user.points}</TableCell>

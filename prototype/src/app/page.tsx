@@ -298,7 +298,6 @@ function addDays(base: Date, days: number): Date {
 function categoryOf(format: GameFormat): EventFilter {
   if (
     format === 'king_of_the_court' ||
-    format === 'court_of_queens' ||
     format === 'king_queen_of_the_court'
   ) {
     return 'king';

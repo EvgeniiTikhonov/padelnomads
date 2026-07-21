@@ -1,3 +1,4 @@
+import { BadgeCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
@@ -41,4 +42,16 @@ const USER_STATUS_CLASSES: Record<UserStatus, string> = {
 
 export function UserStatusBadge({ status }: { status: UserStatus }) {
   return <Badge className={cn('border-none', USER_STATUS_CLASSES[status])}>{USER_STATUS_LABELS[status]}</Badge>;
+}
+
+/** White tick on a blue badge — the player's level was verified by Padel Nomads. */
+export function VerifiedBadge({ className }: { className?: string }) {
+  return (
+    <span title="Level verified by Padel Nomads" className="inline-flex shrink-0 align-middle">
+      <BadgeCheck
+        aria-label="Level verified by Padel Nomads"
+        className={cn('size-4 fill-blue-500 stroke-white', className)}
+      />
+    </span>
+  );
 }

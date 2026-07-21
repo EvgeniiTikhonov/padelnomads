@@ -3,13 +3,12 @@ import { LEVELS, type GameFormat, type GameStatus, type KarmaTier, type Level, t
 export { LEVELS };
 
 export const FORMAT_LABELS: Record<GameFormat, string> = {
-  social_shuffle: 'Social Shuffle',
   king_of_the_court: 'King of the Court',
-  court_of_queens: 'Court of Queens',
-  king_queen_of_the_court: 'King & Queen of the Court',
   fixed_pairs: 'Fixed Pairs',
+  king_queen_of_the_court: 'King & Queen of the Court',
+  team_mexicano: 'Team Mexicano',
+  social_shuffle: 'Social Shuffle',
   mini_tournament: 'Mini-Tournament',
-  americano: 'Americano',
 };
 
 /** Letter labels aligned to the Viya padel level structure (Dubai Golf). */

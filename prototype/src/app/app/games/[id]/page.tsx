@@ -10,7 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { GameStatusBadge, ParticipantStatusBadge } from '@/components/badges';
+import { GameStatusBadge, ParticipantStatusBadge, VerifiedBadge } from '@/components/badges';
+import { GameResults } from '@/components/game-results';
 import { useMockData, ALLOW_SELF_REGISTER } from '@/data/provider';
 import { spotsTaken } from '@/lib/derive';
 import { FORMAT_LABELS, LEVEL_LABELS, formatDateLong, initials } from '@/lib/format';
@@ -19,7 +20,7 @@ export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const {
-    games, participants, users, currentUser,
+    games, participants, teams, matches, users, currentUser,
     confirmParticipation, declineParticipation, registerForGame,
   } = useMockData();
 
@@ -42,6 +43,10 @@ export default function GameDetailPage() {
   const karmaBlocked = currentUser.karmaTier === 'restricted' || currentUser.karmaTier === 'suspended';
 
   const userFor = (userId: string) => users.find((u) => u.id === userId);
+
+  const gameTeams = teams.filter((t) => t.gameId === game.id);
+  const gameMatches = matches.filter((m) => m.gameId === game.id);
+  const myTeamId = gameTeams.find((t) => t.playerIds.includes(currentUser.id))?.id;
 
   return (
     <div className="space-y-5">
@@ -86,6 +91,23 @@ export default function GameDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Results (stored per game, shown in the player's history) */}
+      {game.status === 'completed' && gameTeams.length > 0 && (
+        <>
+          {mine && mine.pointsAwarded != null && (
+            <Card className="rounded-2xl border-primary/30 bg-primary/[0.04] py-0 shadow-sm">
+              <CardContent className="flex flex-wrap items-center justify-between gap-2 p-4">
+                <p className="text-sm font-medium">
+                  You finished {mine.position ? (mine.position <= 3 ? ['🥇', '🥈', '🥉'][mine.position - 1] : `#${mine.position}`) : '—'}
+                </p>
+                {mine.pointsAwarded ? <Badge className="text-sm">+{mine.pointsAwarded} points</Badge> : null}
+              </CardContent>
+            </Card>
+          )}
+          <GameResults game={game} teams={gameTeams} matches={gameMatches} users={users} highlightTeamId={myTeamId} linkPlayers />
+        </>
+      )}
 
       {/* Participation actions (PRD §16.5) */}
       {game.status === 'upcoming' && (
@@ -168,17 +190,22 @@ export default function GameDetailPage() {
             if (!u) return null;
             return (
               <div key={p.id} className="flex items-center gap-3 py-2.5">
-                <Avatar className="size-8">
-                  <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-                    {initials(u.name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {u.name}{u.id === currentUser.id && <span className="text-muted-foreground"> (you)</span>}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{LEVEL_LABELS[u.level]}</p>
-                </div>
+                <Link href={`/app/players/${u.id}`} className="flex min-w-0 flex-1 items-center gap-3 hover:text-primary">
+                  <Avatar className="size-8">
+                    <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+                      {initials(u.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">
+                      {u.name}{u.id === currentUser.id && <span className="text-muted-foreground"> (you)</span>}
+                    </p>
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {LEVEL_LABELS[u.level]}
+                      {u.levelVerified && <VerifiedBadge className="size-3.5" />}
+                    </p>
+                  </div>
+                </Link>
                 <ParticipantStatusBadge status={p.status} />
               </div>
             );
@@ -202,7 +229,9 @@ export default function GameDetailPage() {
                       {initials(u.name)}
                     </AvatarFallback>
                   </Avatar>
-                  <p className="flex-1 truncate text-sm font-medium">{u.name}</p>
+                  <Link href={`/app/players/${u.id}`} className="flex-1 truncate text-sm font-medium hover:text-primary">
+                    {u.name}
+                  </Link>
                   <ParticipantStatusBadge status={p.status} />
                 </div>
               );

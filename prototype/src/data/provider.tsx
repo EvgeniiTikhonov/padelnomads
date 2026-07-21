@@ -3,13 +3,14 @@
 import * as React from 'react';
 import { toast } from 'sonner';
 import type {
-  User, PlayerPhoneNumber, Application, Game, GameParticipant, Offer,
+  User, PlayerPhoneNumber, Application, Game, GameParticipant, GameTeam, GameMatch, Offer,
   AppNotification, KarmaEvent, MessageTemplate, OutboundMessage, InboundMessage,
   ImportBatch, ImportRecord, PlayerMergeLog, BanRecord, RatingAdjustment, ActivityLog,
   MockSession, ViewRole, KarmaEventType, GameStatus, ParticipantStatus,
 } from '@/types';
+import { computeStandings, generateNextRoundMatches } from '@/lib/scoring';
 import {
-  seedUsers, seedPhones, seedApplications, seedGames, seedParticipants,
+  seedUsers, seedPhones, seedApplications, seedGames, seedParticipants, seedGameTeams, seedGameMatches,
   seedOffers, seedNotifications, seedKarmaEvents, seedTemplates, seedOutbound,
   seedInbound, seedImportBatches, seedImportRecords, seedDuplicates,
   seedBanRecords, seedRatingAdjustments, seedActivityLogs, seedMergeLogs,
@@ -26,6 +27,8 @@ interface StoreState {
   applications: Application[];
   games: Game[];
   participants: GameParticipant[];
+  teams: GameTeam[];
+  matches: GameMatch[];
   offers: Offer[];
   notifications: AppNotification[];
   karmaEvents: KarmaEvent[];
@@ -82,6 +85,12 @@ interface MockDataContextValue extends StoreState {
   setGameStatus: (id: string, status: GameStatus) => void;
   addPlayerToGame: (gameId: string, userId: string, opts?: { overrideReason?: string }) => boolean;
   removePlayerFromGame: (gameId: string, userId: string) => void;
+  // game day: start (allocate teams + prefill), record match scores, advance
+  // rounds (court movement), then collect & complete.
+  startGame: (gameId: string) => void;
+  updateMatchScore: (matchId: string, side: 'A' | 'B', value: number | null) => void;
+  generateNextRound: (gameId: string, fromRound: number) => void;
+  collectScores: (gameId: string) => void;
   // player participation
   registerForGame: (gameId: string, userId: string) => void;
   confirmParticipation: (gameId: string, userId: string) => void;
@@ -90,8 +99,6 @@ interface MockDataContextValue extends StoreState {
   setParticipantStatus: (participantId: string, status: ParticipantStatus) => void;
   markAttendance: (participantId: string, value: NonNullable<GameParticipant['attendance']>) => void;
   markPayment: (participantId: string, value: NonNullable<GameParticipant['paymentStatus']>) => void;
-  setResult: (participantId: string, position: number, points: number) => void;
-  publishResults: (gameId: string) => void;
   // offers
   createOffer: (input: Omit<Offer, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateOffer: (id: string, patch: Partial<Offer>) => void;
@@ -112,6 +119,7 @@ interface MockDataContextValue extends StoreState {
   mergeDuplicate: (dupId: string, survivorId: string) => void;
   dismissDuplicate: (dupId: string) => void;
   editPlayer: (userId: string, patch: Partial<User>) => void;
+  setLevelVerified: (userId: string, verified: boolean) => void;
 }
 
 const MockDataContext = React.createContext<MockDataContextValue | null>(null);
@@ -149,6 +157,8 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
     applications: seedApplications,
     games: seedGames,
     participants: seedParticipants,
+    teams: seedGameTeams,
+    matches: seedGameMatches,
     offers: seedOffers,
     notifications: seedNotifications,
     karmaEvents: seedKarmaEvents,
@@ -371,6 +381,131 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
         toast('Player removed', { description: 'WhatsApp notification sent (simulated).' });
       },
 
+      startGame: (gameId) => {
+        const game = state.games.find((g) => g.id === gameId);
+        if (!game) return;
+        const teamsPerCourt = 2; // 2 teams (4 players) per court
+
+        setState((s) => {
+          const active = s.participants.filter(
+            (p) => p.gameId === gameId && !['cancelled', 'waitlisted'].includes(p.status),
+          );
+
+          // Allocate teams (pairs) across courts in roster order.
+          const teams: GameTeam[] = [];
+          const teamIdByUser = new Map<string, string>();
+          for (let i = 0; i < active.length; i += 2) {
+            const members = active.slice(i, i + 2);
+            const idx = teams.length;
+            const teamId = nextId('t');
+            teams.push({
+              id: teamId,
+              gameId,
+              name: `Team ${idx + 1}`,
+              court: Math.min(game.courts, Math.floor(idx / teamsPerCourt) + 1),
+              playerIds: members.map((m) => m.userId),
+            });
+            members.forEach((m) => teamIdByUser.set(m.userId, teamId));
+          }
+
+          // Round 1 matches: pair the two teams sharing each court.
+          const matches: GameMatch[] = [];
+          for (let i = 0; i < teams.length; i += 2) {
+            const a = teams[i];
+            const b = teams[i + 1];
+            if (!b) break; // odd team out sits the first round
+            matches.push({
+              id: nextId('m'), gameId, round: 0, court: a.court,
+              teamAId: a.id, teamBId: b.id, scoreA: null, scoreB: null,
+            });
+          }
+
+          // Prefill every active player: on time, paid, position cleared.
+          const participants = s.participants.map((p) =>
+            p.gameId === gameId && !['cancelled', 'waitlisted'].includes(p.status)
+              ? {
+                  ...p,
+                  status: 'confirmed' as const,
+                  attendance: 'on_time' as const,
+                  paymentStatus: 'paid' as const,
+                  teamId: teamIdByUser.get(p.userId),
+                  position: undefined,
+                  pointsAwarded: undefined,
+                  updatedAt: now(),
+                }
+              : p,
+          );
+
+          return {
+            ...s,
+            games: s.games.map((g) => (g.id === gameId ? { ...g, status: 'live' as const, updatedAt: now() } : g)),
+            participants,
+            teams: [...s.teams.filter((t) => t.gameId !== gameId), ...teams],
+            matches: [...s.matches.filter((m) => m.gameId !== gameId), ...matches],
+          };
+        });
+        toast('Game is now LIVE', { description: `${game.title}: players marked on-time & paid, ${game.courts} court(s) allocated.` });
+      },
+
+      updateMatchScore: (matchId, side, value) => {
+        setState((s) => ({
+          ...s,
+          matches: s.matches.map((m) =>
+            m.id === matchId ? { ...m, [side === 'A' ? 'scoreA' : 'scoreB']: value } : m,
+          ),
+        }));
+      },
+
+      generateNextRound: (gameId, fromRound) => {
+        const game = state.games.find((g) => g.id === gameId);
+        if (!game) return;
+        if (state.matches.some((m) => m.gameId === gameId && m.round === fromRound + 1)) {
+          return; // already generated
+        }
+        const nextMatches = generateNextRoundMatches(game, state.matches, fromRound, () => nextId('m'));
+        if (!nextMatches) {
+          toast.error('Finish the round first', { description: 'Every court needs a decisive score before advancing.' });
+          return;
+        }
+        setState((s) => ({ ...s, matches: [...s.matches, ...nextMatches] }));
+        toast(`Round ${fromRound + 2} set`, { description: 'Courts updated — winners moved up, losers moved down.' });
+      },
+
+      collectScores: (gameId) => {
+        setState((s) => {
+          const game = s.games.find((g) => g.id === gameId);
+          if (!game) return s;
+          const teams = s.teams.filter((t) => t.gameId === gameId);
+          const gameMatches = s.matches.filter((m) => m.gameId === gameId);
+          const standings = computeStandings(game, teams, gameMatches);
+          const byTeam = new Map(standings.map((st) => [st.team.id, st]));
+
+          let next: StoreState = {
+            ...s,
+            games: s.games.map((g) => (g.id === gameId ? { ...g, status: 'completed' as const, updatedAt: now() } : g)),
+            participants: s.participants.map((p) => {
+              const st = p.teamId ? byTeam.get(p.teamId) : undefined;
+              if (p.gameId !== gameId || !st) return p;
+              return { ...p, position: st.rank, pointsAwarded: st.total, updatedAt: now() };
+            }),
+          };
+
+          for (const p of next.participants.filter((x) => x.gameId === gameId)) {
+            if (p.status === 'cancelled' || !p.teamId) continue;
+            if (p.pointsAwarded) {
+              const u = next.users.find((x) => x.id === p.userId);
+              if (u) next = patchUser(next, p.userId, { points: u.points + p.pointsAwarded });
+            }
+            if (p.attendance === 'on_time') next = applyKarma(next, p.userId, 'on_time_game', 2, { gameId });
+            next = pushNotification(next, p.userId, 'Result published',
+              `Results for ${game.title} are out${p.position ? ` — your team finished ${ordinal(p.position)}` : ''}${p.pointsAwarded ? ` with ${p.pointsAwarded} points` : ''}.`,
+              'result_published', 'in_app');
+          }
+          return next;
+        });
+        toast.success('Scores collected', { description: 'Team totals ranked, leaderboard & karma updated, results sent (simulated).' });
+      },
+
       registerForGame: (gameId, userId) => {
         const game = state.games.find((g) => g.id === gameId);
         const user = state.users.find((u) => u.id === userId);
@@ -465,37 +600,6 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
           return next;
         });
         if (value === 'unpaid') toast('Marked unpaid (-20 karma)');
-      },
-
-      setResult: (participantId, position, points) => {
-        setState((s) => ({
-          ...s,
-          participants: s.participants.map((p) => (p.id === participantId ? { ...p, position, pointsAwarded: points, updatedAt: now() } : p)),
-        }));
-      },
-
-      publishResults: (gameId) => {
-        setState((s) => {
-          const game = s.games.find((g) => g.id === gameId);
-          let next: StoreState = {
-            ...s,
-            games: s.games.map((g) => (g.id === gameId ? { ...g, status: 'completed' as const, updatedAt: now() } : g)),
-          };
-          for (const p of s.participants.filter((x) => x.gameId === gameId)) {
-            if (p.pointsAwarded && p.status !== 'cancelled') {
-              const u = next.users.find((x) => x.id === p.userId);
-              if (u) next = patchUser(next, p.userId, { points: u.points + p.pointsAwarded });
-            }
-            if (p.attendance === 'on_time') {
-              next = applyKarma(next, p.userId, 'on_time_game', 2, { gameId });
-            }
-            next = pushNotification(next, p.userId, 'Result published',
-              `Results for ${game?.title ?? 'your game'} are out${p.position ? ` — you finished ${ordinal(p.position)}` : ''}${p.pointsAwarded ? ` and earned ${p.pointsAwarded} points` : ''}.`,
-              'result_published', 'in_app');
-          }
-          return next;
-        });
-        toast.success('Results published', { description: 'Leaderboard updated. Results summary sent to participants via WhatsApp (simulated).' });
       },
 
       createOffer: (input) => {
@@ -662,6 +766,43 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
       editPlayer: (userId, patch) => {
         setState((s) => patchUser(s, userId, patch));
         toast.success('Player updated', { description: 'Field-level change recorded in audit log.' });
+      },
+
+      setLevelVerified: (userId, verified) => {
+        setState((s) => {
+          const user = s.users.find((u) => u.id === userId);
+          if (!user) return s;
+          let next = patchUser(s, userId, {
+            levelVerified: verified,
+            levelVerifiedAt: verified ? now() : undefined,
+            levelVerifiedBy: verified ? 'admin1' : undefined,
+          });
+          next = {
+            ...next,
+            activityLogs: [
+              {
+                id: nextId('al'), userId, eventType: 'admin_action',
+                relatedEntityType: 'user', relatedEntityId: userId,
+                summary: verified
+                  ? `Level ${user.level} verified by Padel Nomads`
+                  : 'Level verification removed',
+                createdAt: now(),
+              },
+              ...next.activityLogs,
+            ],
+          };
+          if (verified) {
+            next = pushNotification(next, userId, 'Level verified',
+              `Your level (${user.level}) has been verified by Padel Nomads. The verified badge now shows on your profile.`,
+              'level_verified', 'in_app');
+          }
+          return next;
+        });
+        toast.success(verified ? 'Level verified' : 'Verification removed', {
+          description: verified
+            ? 'The player now shows the blue verified badge next to their level.'
+            : 'The verified badge was removed from this player.',
+        });
       },
     };
   }, [state]);

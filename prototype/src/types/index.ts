@@ -17,6 +17,9 @@ export interface User {
   role: Role;
   status: UserStatus;
   level: Level;
+  levelVerified?: boolean;       // level verified by Padel Nomads (admin-granted)
+  levelVerifiedAt?: string;
+  levelVerifiedBy?: string;
   preferredSide: PreferredSide;
   gender?: Gender;
   whatsappOptIn: boolean; whatsappOptInAt?: string;
@@ -62,8 +65,8 @@ export interface Application {
 
 // PRD §15.4
 export type GameFormat =
-  | 'social_shuffle' | 'king_of_the_court' | 'court_of_queens'
-  | 'king_queen_of_the_court' | 'fixed_pairs' | 'mini_tournament' | 'americano';
+  | 'king_of_the_court' | 'fixed_pairs' | 'king_queen_of_the_court'
+  | 'team_mexicano' | 'social_shuffle' | 'mini_tournament';
 export type GameStatus = 'upcoming' | 'live' | 'completed' | 'cancelled';
 export interface Game {
   id: string; title: string; format: GameFormat; venue: string;
@@ -89,6 +92,30 @@ export interface GameParticipant {
   paymentStatus?: 'pending' | 'paid' | 'unpaid' | 'waived';
   position?: number; pointsAwarded?: number;
   createdAt: string; updatedAt: string;
+}
+
+// Team allocated to a court when a game goes live. Points are derived from the
+// per-round matches (GameMatch), never stored directly on the team.
+export interface GameTeam {
+  id: string;
+  gameId: string;
+  name: string;                 // "Team 1"
+  court: number;                // starting court number (1 = central / king court)
+  playerIds: string[];          // usually 2
+}
+
+// One team-vs-team match on a court in a given round. Court movement means a
+// team's court can change round to round, so the court is stored per match and
+// drives the boosted-points calculation.
+export interface GameMatch {
+  id: string;
+  gameId: string;
+  round: number;                // 0-based round index
+  court: number;                // court this match is played on
+  teamAId: string;
+  teamBId: string;
+  scoreA: number | null;        // games won by team A (golden points)
+  scoreB: number | null;
 }
 
 // PRD §15.6
