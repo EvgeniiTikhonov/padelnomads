@@ -1,4 +1,5 @@
-import { LEVELS, type GameFormat, type GameStatus, type KarmaTier, type Level, type ParticipantStatus, type PreferredSide, type BestHand, type MatchTypePref, type PlayTimePref, type Gender, type UserStatus, type KarmaEventType } from '@/types';
+import { LEVELS, type GameFormat, type GameLeague, type GameStatus, type KarmaTier, type LeaderboardKind, type Level, type ParticipantStatus, type PreferredSide, type BestHand, type MatchTypePref, type PlayTimePref, type Gender, type UserStatus, type KarmaEventType, type Game, type ClubAmenity, type SupportRequestCategory } from '@/types';
+import { formatEntryMode } from './gameFormats';
 
 export { LEVELS };
 
@@ -9,6 +10,16 @@ export const FORMAT_LABELS: Record<GameFormat, string> = {
   team_mexicano: 'Team Mexicano',
   social_shuffle: 'Social Shuffle',
   mini_tournament: 'Mini-Tournament',
+};
+
+/** Accent classes so each format reads differently in lists and badges. */
+export const FORMAT_ACCENT: Record<GameFormat, string> = {
+  king_of_the_court: 'bg-amber-500/15 text-amber-300',
+  fixed_pairs: 'bg-sky-500/15 text-sky-300',
+  king_queen_of_the_court: 'bg-rose-500/15 text-rose-300',
+  team_mexicano: 'bg-primary/15 text-primary',
+  social_shuffle: 'bg-violet-500/15 text-violet-300',
+  mini_tournament: 'bg-orange-500/15 text-orange-300',
 };
 
 /** Letter labels aligned to the Viya padel level structure (Dubai Golf). */
@@ -24,6 +35,17 @@ export const LEVEL_LABELS: Record<Level | 'mixed', string> = {
   A: 'A — Pro',
   'A+': 'A+ — Elite',
   mixed: 'Mixed',
+};
+
+export const LEADERBOARD_KIND_LABELS: Record<LeaderboardKind, string> = {
+  community: 'Community',
+  mens_c_plus: "Men's C+ League",
+  womens_c: "Women's C League",
+};
+
+export const GAME_LEAGUE_LABELS: Record<GameLeague, string> = {
+  mens_c_plus: "Men's C+ League",
+  womens_c: "Women's C League",
 };
 
 export const SIDE_LABELS: Record<PreferredSide, string> = {
@@ -44,9 +66,7 @@ export const PLAY_TIME_LABELS: Record<PlayTimePref, string> = {
 
 /** Partner clubs players can pick as their preferred venues. */
 export const PREFERRED_CLUBS = [
-  'Padel Edition', 'Central Padel', 'Padel 700', 'PadelAE', 'Padel Art', 'Padel One',
-  'ZY', 'Paus', 'The Lob', 'Casa Padel', 'Ballers', 'ISD Padel', 'WPA', 'Rally Padel',
-  'Padel 360', 'Padel 26', 'Oxygen', 'Al Habtoor', 'Danube',
+  'Padel Edition', 'Central Padel Al Quoz', 'ZY Padel',
 ] as const;
 
 export const GENDER_LABELS: Record<Gender, string> = {
@@ -82,16 +102,26 @@ export const PARTICIPANT_STATUS_META: Record<ParticipantStatus, { label: string;
 };
 
 /** Formats where players register as a fixed pair / team of two. */
-export const FIXED_TEAM_FORMATS: GameFormat[] = [
-  'fixed_pairs',
-  'king_of_the_court',
-  'king_queen_of_the_court',
-  'mini_tournament',
-];
-
 export function isFixedTeamFormat(format: GameFormat): boolean {
-  return FIXED_TEAM_FORMATS.includes(format);
+  return formatEntryMode(format) === 'team';
 }
+
+export const GENDER_RESTRICTION_LABELS: Record<NonNullable<Game['genderRestriction']>, string> = {
+  male: 'Men only',
+  female: 'Ladies only',
+  mixed: 'Mixed (open)',
+  mixed_pairs: 'Mixed only (man + woman)',
+};
+
+export const CLUB_AMENITY_LABELS: Record<ClubAmenity, string> = {
+  cold_plunge: 'Cold plunge',
+  sauna: 'Sauna',
+  yoga_room: 'Yoga room',
+  gym: 'Gym',
+  recovery_center: 'Recovery center',
+  cafeteria: 'Cafeteria',
+  padel_equipment_shop: 'Padel equipment shop',
+};
 
 /** How long an off-app partner invite holds a roster spot. */
 export const EXTERNAL_PARTNER_HOLD_HOURS = 24;
@@ -114,6 +144,20 @@ export function isLateCancel(game: { date: string; startTime: string }): boolean
 export function adminWhatsAppUrl(message: string): string {
   return `https://wa.me/${ADMIN_WHATSAPP_E164}?text=${encodeURIComponent(message)}`;
 }
+
+/** Open WhatsApp chat to a player’s contact number (E.164 with or without +). */
+export function playerWhatsAppUrl(phoneE164: string, message?: string): string {
+  const digits = phoneE164.replace(/\D/g, '');
+  const base = `https://wa.me/${digits}`;
+  return message ? `${base}?text=${encodeURIComponent(message)}` : base;
+}
+
+export const SUPPORT_CATEGORY_LABELS: Record<SupportRequestCategory, string> = {
+  payment: 'Payment',
+  booking: 'Booking',
+  account: 'Account',
+  other: 'Other',
+};
 
 export const KARMA_EVENT_LABELS: Record<KarmaEventType, string> = {
   on_time_game: 'Played on time',

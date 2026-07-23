@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, Trophy, Sparkles, Bell, AlertTriangle } from 'lucide-react';
+import { ArrowRight, Trophy, Sparkles, AlertTriangle, Check, X } from 'lucide-react';
+import { PlayerAvatar } from '@/components/player-avatar';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
@@ -9,15 +11,35 @@ import { GameCard } from '@/components/game-card';
 import { KarmaTierBadge } from '@/components/badges';
 import { useMockData } from '@/data/provider';
 import { leaderboard, upcomingGamesNextTwoWeeks } from '@/lib/derive';
-import { KARMA_TIER_META, formatDate, timeAgo } from '@/lib/format';
-import { notificationHref } from '@/lib/notifications';
+import { KARMA_TIER_META, formatDate, LEVEL_LABELS } from '@/lib/format';
 
 export default function PlayerDashboard() {
-  const { games, participants, users, currentUser, notifications, offers, markNotificationRead } = useMockData();
+  const {
+    games, participants, users, currentUser, offers,
+    acceptPartnerInvite, declinePartnerInvite,
+  } = useMockData();
 
   const upcoming = upcomingGamesNextTwoWeeks(games);
+
+  const awaitingConfirmation = participants
+    .filter((p) =>
+      p.userId === currentUser.id
+      && Boolean(p.partnerInviteFrom)
+      && !['cancelled'].includes(p.status))
+    .map((p) => {
+      const game = games.find((g) => g.id === p.gameId && !g.deleted);
+      const inviter = users.find((u) => u.id === p.partnerInviteFrom);
+      if (!game || !inviter) return null;
+      return { part: p, game, inviter };
+    })
+    .filter((x): x is NonNullable<typeof x> => Boolean(x))
+    .sort((a, b) => (a.game.date + a.game.startTime).localeCompare(b.game.date + b.game.startTime));
+
+  const awaitingGameIds = new Set(awaitingConfirmation.map((x) => x.game.id));
+
   const myGames = upcoming.filter((g) =>
-    participants.some((p) =>
+    !awaitingGameIds.has(g.id)
+    && participants.some((p) =>
       p.gameId === g.id
       && p.userId === currentUser.id
       && ['confirmed', 'registered', 'pending_replacement', 'waitlisted'].includes(p.status)));
@@ -25,19 +47,19 @@ export default function PlayerDashboard() {
   const upcomingOthers = upcoming.filter((g) => g.id !== nextGame?.id).slice(0, 4);
   const board = leaderboard(users, participants, games);
   const myRow = board.find((r) => r.user.id === currentUser.id);
-  const recentNotifications = notifications
-    .filter((n) => n.userId === currentUser.id)
-    .slice(0, 3);
   const activeOffers = offers.filter((o) => o.status === 'active').slice(0, 2);
   const tierMeta = KARMA_TIER_META[currentUser.karmaTier];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl font-bold">
-          Hey {currentUser.name.split(' ')[0]} 👋
-        </h1>
-        <p className="text-sm text-muted-foreground">Here&apos;s what&apos;s happening in your padel world.</p>
+      <div className="flex items-center gap-3">
+        <PlayerAvatar user={currentUser} className="size-12 shrink-0" fallbackClassName="text-base" />
+        <div>
+          <h1 className="font-heading text-2xl font-bold">
+            Hey {currentUser.name.split(' ')[0]} 👋
+          </h1>
+          <p className="text-sm text-muted-foreground">Here&apos;s what&apos;s happening in your padel world.</p>
+        </div>
       </div>
 
       {(currentUser.karmaTier === 'warning' || currentUser.karmaTier === 'restricted') && (
@@ -53,10 +75,9 @@ export default function PlayerDashboard() {
         </Alert>
       )}
 
-      {/* Stats row */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Link href="/app/leaderboard">
-          <Card className="rounded-2xl py-0 shadow-sm transition-shadow hover:shadow-md">
+      <div className="grid grid-cols-2 items-stretch gap-3">
+        <Link href="/app/leaderboard" className="block h-full min-h-0">
+          <Card className="h-full rounded-2xl py-0 shadow-sm transition-shadow hover:shadow-md">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <Trophy className="size-3.5 text-amber-500" /> Leaderboard rank
@@ -66,8 +87,8 @@ export default function PlayerDashboard() {
             </CardContent>
           </Card>
         </Link>
-        <Link href="/app/profile">
-          <Card className="rounded-2xl py-0 shadow-sm transition-shadow hover:shadow-md">
+        <Link href="/app/profile" className="block h-full min-h-0">
+          <Card className="h-full rounded-2xl py-0 shadow-sm transition-shadow hover:shadow-md">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <span className={`size-2 rounded-full ${tierMeta.dot}`} /> Karma status
@@ -78,27 +99,67 @@ export default function PlayerDashboard() {
             </CardContent>
           </Card>
         </Link>
-        <Card className="rounded-2xl py-0 shadow-sm">
-          <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Games next 2 weeks</p>
-            <p className="mt-1 font-heading text-2xl font-bold">{upcoming.length}</p>
-            <p className="text-xs text-muted-foreground">{myGames.length} you&apos;re in</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-2xl py-0 shadow-sm">
-          <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Next game</p>
-            <p className="mt-1 truncate font-heading text-base font-bold">
-              {nextGame ? formatDate(nextGame.date) : 'None yet'}
-            </p>
-            <p className="truncate text-xs text-muted-foreground">
-              {nextGame ? `${nextGame.startTime} · ${nextGame.title}` : 'Browse games to register'}
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
-      {/* Next game you're playing */}
+      {awaitingConfirmation.length > 0 && (
+        <section>
+          <div className="mb-2">
+            <h2 className="font-heading text-lg font-semibold">Awaiting confirmation</h2>
+            <p className="text-sm text-muted-foreground">
+              Someone invited you — accept to join their team, or decline.
+            </p>
+          </div>
+          <div className="space-y-3">
+            {awaitingConfirmation.map(({ part, game, inviter }) => {
+              const isJoinRequest = Boolean(part.lookingForPartner);
+              return (
+                <Card key={part.id} className="rounded-2xl border-sky-500/30 bg-sky-500/5 py-0 shadow-sm">
+                  <CardContent className="space-y-3 p-4">
+                    <div className="flex items-start gap-3">
+                      <PlayerAvatar user={inviter} className="size-10 shrink-0" fallbackClassName="text-sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">
+                          {isJoinRequest
+                            ? `${inviter.name} wants to join your team`
+                            : `${inviter.name} invited you to play`}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {LEVEL_LABELS[inviter.level]} · karma {inviter.karmaBalance}
+                        </p>
+                        <Link
+                          href={`/app/games/${game.id}`}
+                          className="mt-1 block text-sm font-medium text-primary hover:underline"
+                        >
+                          {game.title}
+                        </Link>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDate(game.date)} · {game.startTime} · {game.venue}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        className="h-10 flex-1"
+                        onClick={() => acceptPartnerInvite(game.id, currentUser.id)}
+                      >
+                        <Check className="size-4" /> {isJoinRequest ? 'Approve' : 'Accept'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="h-10 flex-1"
+                        onClick={() => declinePartnerInvite(game.id, currentUser.id)}
+                      >
+                        <X className="size-4" /> Decline
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {nextGame && (
         <section>
           <div className="mb-2">
@@ -111,7 +172,6 @@ export default function PlayerDashboard() {
         </section>
       )}
 
-      {/* Upcoming games */}
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-heading text-lg font-semibold">Upcoming games</h2>
@@ -131,7 +191,6 @@ export default function PlayerDashboard() {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Benefits preview */}
         <section>
           <div className="mb-2 flex items-center justify-between">
             <h2 className="font-heading text-lg font-semibold">Member benefits</h2>
@@ -161,37 +220,6 @@ export default function PlayerDashboard() {
                       {o.partnerName}
                       {o.promoCode ? ` · ${o.promoCode}` : ''}
                     </span>
-                  </span>
-                </Link>
-              ))}
-            </CardContent>
-          </Card>
-        </section>
-
-        {/* Recent notifications */}
-        <section>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="font-heading text-lg font-semibold">Recent notifications</h2>
-            <Link href="/app/notifications" className="flex items-center gap-1 text-sm font-medium text-primary">
-              View all <ArrowRight className="size-3.5" />
-            </Link>
-          </div>
-          <Card className="rounded-2xl py-0 shadow-sm">
-            <CardContent className="divide-y p-0">
-              {recentNotifications.map((n) => (
-                <Link
-                  key={n.id}
-                  href={notificationHref(n)}
-                  onClick={() => { if (!n.isRead) markNotificationRead(n.id); }}
-                  className="flex items-start gap-3 p-3.5 transition-colors hover:bg-muted/40"
-                >
-                  <span className={`mt-1 flex size-8 shrink-0 items-center justify-center rounded-lg ${n.isRead ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'}`}>
-                    <Bell className="size-4" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className={`block truncate text-sm ${n.isRead ? '' : 'font-semibold'}`}>{n.title}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{n.message}</span>
-                    <span className="block text-[11px] text-muted-foreground/70">{timeAgo(n.createdAt)}</span>
                   </span>
                 </Link>
               ))}

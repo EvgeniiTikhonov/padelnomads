@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { BarChart3, ChevronDown, Hand, Heart, MapPin, Swords, Users } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PlayerAvatar } from '@/components/player-avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { VerifiedBadge } from '@/components/badges';
+import { ClubLink } from '@/components/club-link';
 import { cn } from '@/lib/utils';
 import {
   FORMAT_GROUP_LABELS, winLossByGroup, winLossStats, partnerStats, headToHead,
@@ -22,7 +23,7 @@ import {
 } from '@/lib/playerStats';
 import {
   BEST_HAND_LABELS, LEVEL_LABELS, MATCH_TYPE_LABELS, PLAY_TIME_LABELS, PREFERRED_CLUBS,
-  SIDE_LABELS, initials,
+  SIDE_LABELS,
 } from '@/lib/format';
 import type {
   BestHand, Game, GameMatch, GameTeam, MatchTypePref, PlayTimePref, PreferredSide, User,
@@ -181,11 +182,7 @@ export function PartnersCard({
         {top.map((p) => {
           const inner = (
             <>
-              <Avatar className="size-8">
-                <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-                  {initials(p.partner.name)}
-                </AvatarFallback>
-              </Avatar>
+              <PlayerAvatar user={p.partner} className="size-8" fallbackClassName="text-xs" />
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 truncate text-sm font-medium">
                   {p.partner.name}
@@ -422,7 +419,9 @@ export function PreferencesCard({
           {clubs.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {clubs.map((club) => (
-                <Badge key={club} variant="secondary">{club}</Badge>
+                <Badge key={club} variant="secondary" className="px-0 py-0">
+                  <ClubLink name={club} className="px-2.5 py-0.5 no-underline hover:underline" />
+                </Badge>
               ))}
             </div>
           ) : (

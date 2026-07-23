@@ -2,28 +2,30 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Phone, Plus, Star, History, ShieldCheck } from 'lucide-react';
+import { Phone, Plus, Star, History, ShieldCheck, LifeBuoy } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PlayerAvatar } from '@/components/player-avatar';
 import { Progress } from '@/components/ui/progress';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { KarmaTierBadge, VerifiedBadge } from '@/components/badges';
+import { ClubLink } from '@/components/club-link';
 import {
   PartnersCard, PlayerStatsCard, PreferencesCard,
 } from '@/components/player-stats';
+import { SupportDialog } from '@/components/support-dialog';
 import { useMockData } from '@/data/provider';
 import { leaderboard, upcomingGamesNextTwoWeeks } from '@/lib/derive';
 import { playerMatchRecords } from '@/lib/playerStats';
 import {
   LEVEL_LABELS, SIDE_LABELS, GENDER_LABELS, KARMA_EVENT_LABELS,
-  formatDate, formatDateTime, initials,
+  formatDate, formatDateTime,
 } from '@/lib/format';
 
 export default function ProfilePage() {
@@ -33,6 +35,7 @@ export default function ProfilePage() {
   } = useMockData();
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [supportOpen, setSupportOpen] = React.useState(false);
   const [newPhone, setNewPhone] = React.useState('');
   const [otpStage, setOtpStage] = React.useState(false);
   const [otp, setOtp] = React.useState('');
@@ -71,11 +74,7 @@ export default function ProfilePage() {
       {/* Header */}
       <Card className="rounded-2xl py-0 shadow-sm">
         <CardContent className="flex flex-wrap items-center gap-4 p-5">
-          <Avatar className="size-16">
-            <AvatarFallback className="bg-primary/10 text-xl font-bold text-primary">
-              {initials(currentUser.name)}
-            </AvatarFallback>
-          </Avatar>
+          <PlayerAvatar user={currentUser} className="size-16" fallbackClassName="text-xl font-bold" />
           <div className="min-w-0 flex-1">
             <h1 className="font-heading text-xl font-bold">{currentUser.name}</h1>
             <p className="text-sm text-muted-foreground">{currentUser.email}</p>
@@ -235,6 +234,25 @@ export default function ProfilePage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Support */}
+          <Card className="rounded-2xl py-0 shadow-sm">
+            <CardHeader className="p-5 pb-0">
+              <CardTitle className="flex items-center gap-2 font-heading text-base">
+                <LifeBuoy className="size-4 text-primary" />
+                Support
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 p-5">
+              <p className="text-sm text-muted-foreground">
+                Need help with a booking, payment, or your account? Send us a note and an admin will contact you.
+              </p>
+              <Button className="w-full sm:w-auto" onClick={() => setSupportOpen(true)}>
+                <LifeBuoy className="size-3.5" />
+                Contact support
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
@@ -245,10 +263,14 @@ export default function ProfilePage() {
         </CardHeader>
         <CardContent className="divide-y p-5 pt-2">
           {myPast.map(({ game, p }) => (
-            <Link key={game.id} href={`/app/games/${game.id}`} className="flex items-center justify-between gap-2 py-3">
+            <div key={game.id} className="flex items-center justify-between gap-2 py-3">
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{game.title}</p>
-                <p className="text-xs text-muted-foreground">{formatDate(game.date)} · {game.venue}</p>
+                <Link href={`/app/games/${game.id}`} className="truncate text-sm font-medium hover:text-primary">
+                  {game.title}
+                </Link>
+                <p className="text-xs text-muted-foreground">
+                  {formatDate(game.date)} · <ClubLink name={game.venue} className="text-xs" />
+                </p>
               </div>
               <div className="text-right">
                 {p?.position ? (
@@ -258,11 +280,13 @@ export default function ProfilePage() {
                 )}
                 {p?.pointsAwarded ? <p className="text-xs text-green-600">+{p.pointsAwarded} pts</p> : null}
               </div>
-            </Link>
+            </div>
           ))}
           {myPast.length === 0 && <p className="py-4 text-sm text-muted-foreground">No completed games yet.</p>}
         </CardContent>
       </Card>
+
+      <SupportDialog open={supportOpen} onOpenChange={setSupportOpen} />
 
       {/* Add phone dialog with fake OTP */}
       <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) { setOtpStage(false); setOtp(''); setNewPhone(''); } }}>

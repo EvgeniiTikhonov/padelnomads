@@ -1,5 +1,5 @@
 import type { Game, GameMatch, GameTeam } from '@/types';
-import { FORMAT_CONFIG, courtBoostPoints } from './gameFormats';
+import { formatConfig, courtBoostPoints } from './gameFormats';
 
 // Derived scoring for round-based, team-vs-team formats. Admins enter raw match
 // scores per round; everything below (win/loss, boosted points, streak bonus,
@@ -44,7 +44,7 @@ function matchForTeam(matches: GameMatch[], gameId: string, round: number, teamI
 }
 
 export function computeStandings(game: Game, teams: GameTeam[], matches: GameMatch[]): TeamStanding[] {
-  const cfg = FORMAT_CONFIG[game.format];
+  const cfg = formatConfig(game.format);
   const totalRounds = cfg.rounds.length;
 
   const standings: TeamStanding[] = teams.map((team) => {

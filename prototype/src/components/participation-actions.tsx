@@ -6,16 +6,19 @@ import { Check, Lock, MessageCircle, Sparkles, UserPlus, Users, X } from 'lucide
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { FixedPairsRegisterDialog } from '@/components/fixed-pairs-register';
 import { ALLOW_SELF_REGISTER, useMockData } from '@/data/provider';
 import { isExternalPartnerHoldActive, spotsTaken } from '@/lib/derive';
+import { waitlistOrdered, waitlistPosition } from '@/lib/waitlist';
 import {
   EXTERNAL_PARTNER_HOLD_HOURS, LATE_CANCEL_HOURS, adminWhatsAppUrl, isFixedTeamFormat, isLateCancel,
 } from '@/lib/format';
 import { gameJoinEligibility } from '@/lib/eligibility';
+import { PARTNER_NAME_DEADLINE_HOUR } from '@/lib/teamPriority';
 import type { Game, GameParticipant } from '@/types';
 
 const POLICY_TEXT =
@@ -40,13 +43,15 @@ export function ParticipationActions({
     participants, users, currentUser, externalPartnerInvites,
     markLetsGo, declineParticipation, registerForGame,
     cancelWithPayment, offerReplacement, claimWaitlistSpot,
-    acceptPartnerInvite, declinePartnerInvite,
+    acceptPartnerInvite, declinePartnerInvite, submitPartnerName,
   } = useMockData();
 
   const [policyAccepted, setPolicyAccepted] = React.useState(false);
   const [lateOpen, setLateOpen] = React.useState(false);
   const [pairsOpen, setPairsOpen] = React.useState(false);
   const [pairsMode, setPairsMode] = React.useState<'register' | 'find'>('register');
+  const [waitlistConfirmOpen, setWaitlistConfirmOpen] = React.useState(false);
+  const [partnerNameDraft, setPartnerNameDraft] = React.useState('');
 
   if (game.status !== 'upcoming') return null;
 
@@ -55,7 +60,12 @@ export function ParticipationActions({
   const previouslyCancelled = mine?.status === 'cancelled';
 
   const isFixedTeam = isFixedTeamFormat(game.format);
-  const waitlist = participants.filter((p) => p.gameId === game.id && p.status === 'waitlisted');
+  const waitlist = waitlistOrdered(participants, users, game.id);
+  const myWaitPos = waitlistPosition(participants, users, game.id, currentUser.id, game.format);
+  const topWaiter = waitlist.find((p) => {
+    const u = users.find((x) => x.id === p.userId);
+    return u && u.status !== 'banned' && u.karmaTier !== 'restricted' && u.karmaTier !== 'suspended';
+  });
   const offering = participants.find((p) => p.gameId === game.id && p.status === 'pending_replacement');
   const karmaBlocked = currentUser.karmaTier === 'restricted' || currentUser.karmaTier === 'suspended';
   const joinEligibility = gameJoinEligibility(currentUser, game);
@@ -115,6 +125,43 @@ export function ParticipationActions({
         </div>
       )}
 
+      {activeMine?.status === 'confirmed' && activeMine.teamEntryKind === 'partner_pending' && (
+        <div
+          className={`space-y-2 rounded-xl border border-orange-500/40 bg-orange-500/10 ${pad}`}
+          onClick={stop}
+        >
+          <p className={`font-medium text-orange-100 ${compact ? 'text-xs' : 'text-sm'}`}>
+            Partner name due by{' '}
+            {activeMine.partnerNameDueAt
+              ? new Date(activeMine.partnerNameDueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : `${PARTNER_NAME_DEADLINE_HOUR}:00`}
+          </p>
+          <p className={`text-orange-100/70 ${compact ? 'text-[11px]' : 'text-xs'}`}>
+            2nd priority — if you don’t send a name in time, your spot moves to the waitlist.
+          </p>
+          {!compact && (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={partnerNameDraft}
+                onChange={(e) => setPartnerNameDraft(e.target.value)}
+                placeholder="Partner's full name"
+                className="h-10 flex-1"
+              />
+              <Button
+                className={btnH}
+                disabled={partnerNameDraft.trim().length < 2}
+                onClick={() => {
+                  submitPartnerName(game.id, currentUser.id, partnerNameDraft);
+                  setPartnerNameDraft('');
+                }}
+              >
+                Submit name
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       {activeMine?.status === 'confirmed' && (
         <div
           className={`space-y-2 rounded-xl border border-primary/30 bg-primary/10 ${pad}`}
@@ -166,6 +213,11 @@ export function ParticipationActions({
                 <p className={`text-primary/70 ${compact ? 'text-[11px]' : 'text-xs'}`}>
                   We&apos;ll remind you 24h and 2h before kickoff.
                 </p>
+                {isFixedTeam && activeMine.partnerName && !partner && (
+                  <p className={`mt-1 text-primary/80 ${compact ? 'text-[11px]' : 'text-xs'}`}>
+                    Partner: {activeMine.partnerName}
+                  </p>
+                )}
                 {isFixedTeam && partner && (
                   <p className={`mt-1 text-primary/80 ${compact ? 'text-[11px]' : 'text-xs'}`}>
                     Partner: {partner.name}
@@ -251,17 +303,17 @@ export function ParticipationActions({
             <Users className="size-3.5 shrink-0" /> Looking for a replacement
           </p>
           <p className={`text-muted-foreground ${compact ? 'text-[11px]' : 'text-xs'}`}>
-            Spot offered to the waitlist. You stay on until someone takes it — then you&apos;re cancelled with no late fee.
+            Spot offered to the waitlist. Highest-karma player is promoted first — then you&apos;re cancelled with no late fee.
           </p>
         </div>
       )}
 
       {activeMine?.status === 'waitlisted' && (
         <div className={`space-y-2 rounded-xl border border-white/10 bg-muted/40 ${pad}`} onClick={stop}>
-          {offering ? (
+          {offering && topWaiter?.userId === currentUser.id ? (
             <>
               <p className={`font-medium ${compact ? 'text-xs' : 'text-sm'}`}>
-                A spot just opened — claim it before someone else does.
+                A spot opened — you&apos;re first on the karma waitlist.
               </p>
               <Button className={`${btnH} w-full`} onClick={() => claimWaitlistSpot(game.id, currentUser.id)}>
                 <Check className="size-4" /> Take this spot
@@ -269,7 +321,13 @@ export function ParticipationActions({
             </>
           ) : (
             <p className={`text-muted-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
-              You&apos;re on the waitlist. We&apos;ll notify you if a spot opens.
+              You&apos;re #{myWaitPos ?? '?'} on the waitlist
+              {isFixedTeam && activeMine.partnerUserId
+                ? ' as a team'
+                : isFixedTeam
+                  ? ' as a solo'
+                  : ''}
+              {' '}(karma {currentUser.karmaBalance}). We&apos;ll notify you if you&apos;re moved to the main list — then please confirm your spot.
             </p>
           )}
         </div>
@@ -309,9 +367,14 @@ export function ParticipationActions({
           </div>
         ) : (
           <div className={`space-y-3 rounded-xl border border-white/10 bg-card ${pad}`} onClick={stop}>
+            {full && (
+              <p className={`text-amber-200/90 ${compact ? 'text-[11px]' : 'text-xs'}`}>
+                This game is full — you can still join the waiting list. We&apos;ll notify you if a main-list spot opens.
+              </p>
+            )}
             {previouslyCancelled && !compact && (
               <p className="text-xs text-muted-foreground">
-                You previously cancelled — you can register again if there&apos;s a free spot.
+                You previously cancelled — you can register again{full ? ' on the waitlist' : ' if there\'s a free spot'}.
               </p>
             )}
             <label className="flex cursor-pointer items-start gap-2.5">
@@ -324,14 +387,14 @@ export function ParticipationActions({
                 {POLICY_TEXT}
               </span>
             </label>
-            {isFixedTeam && !full ? (
+            {isFixedTeam ? (
               <Button
                 size={compact ? 'default' : 'lg'}
                 className={`${compact ? 'h-10' : 'h-12'} w-full ${compact ? '' : 'text-base'}`}
                 disabled={!policyAccepted}
                 onClick={() => { setPairsMode('register'); setPairsOpen(true); }}
               >
-                <Users className="size-4" /> Register with a partner
+                <Users className="size-4" /> {full ? 'Join waitlist' : 'Register with a partner'}
               </Button>
             ) : (
               <Button
@@ -339,8 +402,12 @@ export function ParticipationActions({
                 className={`${compact ? 'h-10' : 'h-12'} w-full ${compact ? '' : 'text-base'}`}
                 disabled={!policyAccepted}
                 onClick={() => {
-                  registerForGame(game.id, currentUser.id);
-                  setPolicyAccepted(false);
+                  if (full) {
+                    setWaitlistConfirmOpen(true);
+                  } else {
+                    registerForGame(game.id, currentUser.id);
+                    setPolicyAccepted(false);
+                  }
                 }}
               >
                 <UserPlus className="size-4" /> {full ? 'Join waitlist' : previouslyCancelled ? 'Register again' : 'Register for this game'}
@@ -362,13 +429,38 @@ export function ParticipationActions({
         />
       )}
 
+      <Dialog open={waitlistConfirmOpen} onOpenChange={setWaitlistConfirmOpen}>
+        <DialogContent className="sm:max-w-md" onClick={stop}>
+          <DialogHeader>
+            <DialogTitle>Confirm waitlist spot</DialogTitle>
+            <DialogDescription>
+              This game is full. We&apos;ll add you to the waiting list. When a spot opens, players
+              move to the main list by karma priority (higher first). We&apos;ll notify you if
+              you&apos;re promoted — then please confirm your spot.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" onClick={() => setWaitlistConfirmOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                registerForGame(game.id, currentUser.id);
+                setWaitlistConfirmOpen(false);
+                setPolicyAccepted(false);
+              }}
+            >
+              Confirm waitlist spot
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={lateOpen} onOpenChange={setLateOpen}>
         <DialogContent className="sm:max-w-md" onClick={stop}>
           <DialogHeader>
             <DialogTitle>Late cancellation</DialogTitle>
             <DialogDescription>
               Kickoff is less than {LATE_CANCEL_HOURS} hours away. To leave this game you must
-              either pay {feeLabel}, or find a replacement from the waitlist.
+              either pay {feeLabel}, or fill the spot from the waitlist (highest karma first).
             </DialogDescription>
           </DialogHeader>
 
@@ -392,7 +484,7 @@ export function ParticipationActions({
                   setLateOpen(false);
                 }}
               >
-                <Users className="size-4" /> Suggest replacement ({waitlist.length} on waitlist)
+                <Users className="size-4" /> Fill from waitlist ({waitlist.length} players, karma priority)
               </Button>
             ) : (
               <div className="space-y-2 rounded-xl border p-3">

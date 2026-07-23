@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PlayerAvatar } from '@/components/player-avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -23,7 +23,7 @@ import {
 import { KarmaTierBadge, UserStatusBadge, VerifiedBadge } from '@/components/badges';
 import { useMockData } from '@/data/provider';
 import {
-  LEVEL_LABELS, LEVELS, KARMA_EVENT_LABELS, USER_STATUS_LABELS, formatDateTime, formatDate, initials,
+  LEVEL_LABELS, LEVELS, KARMA_EVENT_LABELS, USER_STATUS_LABELS, formatDateTime, formatDate,
 } from '@/lib/format';
 import type { Level, User, UserStatus } from '@/types';
 
@@ -111,9 +111,7 @@ export default function PlayersPage() {
                 const primary = phones.find((p) => p.userId === u.id && p.isPrimary);
                 return (
                   <button key={u.id} onClick={() => setSelectedId(u.id)} className="flex w-full items-center gap-3 p-3.5 text-left transition-colors hover:bg-muted/50">
-                    <Avatar className="size-9">
-                      <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">{initials(u.name)}</AvatarFallback>
-                    </Avatar>
+                    <PlayerAvatar user={u} className="size-9" fallbackClassName="text-xs" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{u.name}</p>
                       <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">

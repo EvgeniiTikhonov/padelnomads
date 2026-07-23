@@ -10,13 +10,13 @@ import {
 import { useMockData } from '@/data/provider';
 import { visibleGames } from '@/lib/derive';
 import { timeSlotOf } from '@/lib/eligibility';
-import { LEVELS, LEVEL_LABELS } from '@/lib/format';
+import { LEVELS, LEVEL_LABELS, GENDER_RESTRICTION_LABELS } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { Level } from '@/types';
 
 type DateRange = 'today' | 'tomorrow' | '3days' | 'week' | 'all';
 type LevelFilter = 'all' | Level | 'mixed';
-type GenderFilter = 'all' | 'male' | 'female' | 'mixed';
+type GenderFilter = 'all' | 'male' | 'female' | 'mixed' | 'mixed_pairs';
 type TimeFilter = 'all' | 'morning' | 'afternoon' | 'evening';
 
 type Filters = {
@@ -37,7 +37,7 @@ const DEFAULT_FILTERS: Filters = {
 
 type AvailableFilters = {
   levels: Array<Level | 'mixed'>;
-  genders: Array<'mixed' | 'male' | 'female'>;
+  genders: Array<'mixed' | 'mixed_pairs' | 'male' | 'female'>;
   times: Array<'morning' | 'afternoon' | 'evening'>;
   venues: string[];
   dateRanges: { key: DateRange; label: string }[];
@@ -184,7 +184,7 @@ export default function GamesPage() {
   // Facet options = only values that exist on currently available games.
   const available = React.useMemo((): AvailableFilters => {
     const levelSet = new Set<Level | 'mixed'>();
-    const genderSet = new Set<'male' | 'female' | 'mixed'>();
+    const genderSet = new Set<'male' | 'female' | 'mixed' | 'mixed_pairs'>();
     const timeSet = new Set<'morning' | 'afternoon' | 'evening'>();
     const venueSet = new Set<string>();
     for (const g of horizon) {
@@ -194,7 +194,7 @@ export default function GamesPage() {
       venueSet.add(g.venue);
     }
     const levelOrder: Array<Level | 'mixed'> = ['mixed', ...LEVELS];
-    const genderOrder: Array<'mixed' | 'male' | 'female'> = ['mixed', 'male', 'female'];
+    const genderOrder: Array<'mixed' | 'mixed_pairs' | 'male' | 'female'> = ['mixed', 'mixed_pairs', 'male', 'female'];
     const timeOrder: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening'];
     return {
       levels: levelOrder.filter((l) => levelSet.has(l)),
@@ -330,7 +330,7 @@ export default function GamesPage() {
               onClick={openSheet}
               className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-medium"
             >
-              {filters.gender === 'male' ? 'Men only' : filters.gender === 'female' ? 'Ladies only' : 'Mixed'}
+              {GENDER_RESTRICTION_LABELS[filters.gender]}
             </button>
           )}
           {filters.location !== 'all' && (
@@ -455,11 +455,7 @@ export default function GamesPage() {
               summary={
                 draft.gender === 'all'
                   ? 'All'
-                  : draft.gender === 'male'
-                    ? 'Men only'
-                    : draft.gender === 'female'
-                      ? 'Ladies only'
-                      : 'Mixed'
+                  : GENDER_RESTRICTION_LABELS[draft.gender]
               }
             >
               <FilterOption
@@ -471,13 +467,15 @@ export default function GamesPage() {
               {available.genders.map((g) => (
                 <FilterOption
                   key={g}
-                  label={g === 'male' ? 'Men only' : g === 'female' ? 'Ladies only' : 'Mixed'}
+                  label={GENDER_RESTRICTION_LABELS[g]}
                   description={
                     g === 'male'
                       ? 'Men-only match.'
                       : g === 'female'
                         ? 'Women-only match.'
-                        : 'Open mixed games.'
+                        : g === 'mixed_pairs'
+                          ? 'Man + woman teams only.'
+                          : 'Open mixed games.'
                   }
                   selected={draft.gender === g}
                   onSelect={() => setDraft((d) => ({ ...d, gender: g }))}

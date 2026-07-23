@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Inbox, CalendarDays, Users, Tag, Trophy,
-  MessageCircle, Gauge, BarChart3, Settings, Menu, Bell,
+  MessageCircle, Gauge, BarChart3, Settings, Menu, Bell, Layers, Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from '@/components/logo';
@@ -19,6 +19,8 @@ const NAV = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/applications', label: 'Applications', icon: Inbox },
   { href: '/admin/games', label: 'Games', icon: CalendarDays },
+  { href: '/admin/formats', label: 'Formats', icon: Layers },
+  { href: '/admin/clubs', label: 'Clubs', icon: Building2 },
   { href: '/admin/players', label: 'Players', icon: Users },
   { href: '/admin/offers', label: 'Offers', icon: Tag },
   { href: '/admin/leaderboard', label: 'Leaderboard / Results', icon: Trophy },

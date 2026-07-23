@@ -3,12 +3,14 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, CalendarDays, MapPin, ShieldCheck, Trophy, Users } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PlayerAvatar } from '@/components/player-avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GameResults } from '@/components/game-results';
 import { VerifiedBadge } from '@/components/badges';
+import { ClubLink } from '@/components/club-link';
+import { FormatLabel } from '@/components/format-icon';
 import {
   HeadToHeadCard, PartnersCard, PlayerStatsCard, PreferencesCard,
 } from '@/components/player-stats';
@@ -16,7 +18,7 @@ import { useMockData } from '@/data/provider';
 import { leaderboard, upcomingGamesNextTwoWeeks } from '@/lib/derive';
 import { playerMatchRecords } from '@/lib/playerStats';
 import {
-  FORMAT_LABELS, GENDER_LABELS, LEVEL_LABELS, SIDE_LABELS, formatDate, initials,
+  GENDER_LABELS, LEVEL_LABELS, SIDE_LABELS, formatDate,
 } from '@/lib/format';
 
 export default function PublicPlayerProfilePage() {
@@ -59,11 +61,7 @@ export default function PublicPlayerProfilePage() {
 
       <Card className="rounded-2xl py-0 shadow-sm">
         <CardContent className="flex flex-wrap items-center gap-4 p-5">
-          <Avatar className="size-16">
-            <AvatarFallback className="bg-primary/10 text-xl font-bold text-primary">
-              {initials(player.name)}
-            </AvatarFallback>
-          </Avatar>
+          <PlayerAvatar user={player} className="size-16" fallbackClassName="text-xl font-bold" />
           <div className="min-w-0 flex-1">
             <h1 className="font-heading text-xl font-bold">
               {player.name}
@@ -141,8 +139,10 @@ export default function PublicPlayerProfilePage() {
                   <p className="font-heading font-semibold">{game.title}</p>
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><CalendarDays className="size-3" /> {formatDate(game.date)}</span>
-                    <span className="flex items-center gap-1"><MapPin className="size-3" /> {game.venue}</span>
-                    <span>{FORMAT_LABELS[game.format]}</span>
+                    <span className="flex items-center gap-1"><MapPin className="size-3" /> <ClubLink name={game.venue} /></span>
+                    <span className="inline-flex items-center gap-1">
+                      <FormatLabel format={game.format} className="text-xs" iconClassName="size-3" />
+                    </span>
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -191,11 +191,7 @@ export default function PublicPlayerProfilePage() {
                           href={`/app/players/${member.id}`}
                           className="flex items-center gap-3 rounded-xl border p-2.5 transition-colors hover:bg-muted/50"
                         >
-                          <Avatar className="size-8">
-                            <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-                              {initials(member.name)}
-                            </AvatarFallback>
-                          </Avatar>
+                          <PlayerAvatar user={member} className="size-8" fallbackClassName="text-xs" />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium">{member.name}</p>
                             <p className="flex items-center gap-1 text-xs text-muted-foreground">

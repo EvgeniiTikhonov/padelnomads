@@ -1,12 +1,12 @@
 import type {
-  User, PlayerPhoneNumber, Application, Game, GameParticipant, GameMatch, GameTeam, Offer,
+  User, PlayerPhoneNumber, Application, Game, GameParticipant, GameMatch, GameTeam, Offer, Club,
   AppNotification, KarmaEvent, MessageTemplate, OutboundMessage, InboundMessage,
   ImportBatch, ImportRecord, PlayerMergeLog, BanRecord, RatingAdjustment, ActivityLog,
-  Level, PreferredSide, Gender, UserStatus, GameFormat, GameStatus,
+  SupportRequest, Level, PreferredSide, Gender, UserStatus, GameFormat, GameLeague, GameStatus,
   ParticipantStatus, KarmaEventType,
 } from '@/types';
 import { PREFERRED_CLUBS, karmaTierFor } from '@/lib/format';
-import { FORMAT_CONFIG } from '@/lib/gameFormats';
+import { formatConfig } from '@/lib/gameFormats';
 import { computeStandings, generateNextRoundMatches } from '@/lib/scoring';
 
 // ---- date helpers (all seed dates are relative to "now" so the demo stays fresh) ----
@@ -96,6 +96,35 @@ const P_LIST: P[] = [
   { id: 'u40', name: 'Kate Smirnova', level: 'C', side: 'right', gender: 'female', points: 36, karma: 100, status: 'imported', source: 'import', memberDays: 0 },
 ];
 
+const AVATARS_MALE = [
+  '/avatars/coello.jpg',
+  '/avatars/tapia.jpg',
+  '/avatars/bela.jpg',
+  '/avatars/lebron.jpg',
+  '/avatars/paquito.jpg',
+  '/avatars/yanguas.jpg',
+  '/avatars/deloyer.jpg',
+  '/avatars/maigret.jpg',
+  '/avatars/lambrecht.jpg',
+  '/avatars/sichez.jpg',
+  '/avatars/choppe.jpg',
+] as const;
+
+const AVATARS_FEMALE = [
+  '/avatars/gemma.png',
+  '/avatars/paula.jpg',
+  '/avatars/nicole.jpg',
+  '/avatars/exhibition.jpg',
+] as const;
+
+function avatarFor(p: P): string {
+  const n = Number(p.id.slice(1));
+  if (p.gender === 'female') {
+    return AVATARS_FEMALE[n % AVATARS_FEMALE.length]!;
+  }
+  return AVATARS_MALE[n % AVATARS_MALE.length]!;
+}
+
 function mkUser(p: P): User {
   const created = iso(-(p.memberDays ?? 100));
   const n = Number(p.id.slice(1)); // deterministic variety for preference seeds
@@ -104,6 +133,7 @@ function mkUser(p: P): User {
     role: 'player',
     status: p.status ?? 'approved',
     level: p.level, preferredSide: p.side, gender: p.gender,
+    avatarUrl: avatarFor(p),
     bestHand: n % 7 === 0 ? 'left' : n % 11 === 0 ? 'ambidextrous' : 'right',
     preferredMatchType: (['competitive', 'social', 'both'] as const)[n % 3],
     preferredPlayTime: ([
@@ -132,6 +162,7 @@ function mkUser(p: P): User {
 const ADMIN: User = {
   id: 'admin1', name: 'Dima Organizer', email: 'admin@padelnomads.com',
   role: 'admin', status: 'approved', level: 'B', preferredSide: 'both',
+  avatarUrl: '/avatars/paquito.jpg',
   whatsappOptIn: true, whatsappMarketingOptIn: false, source: 'signup',
   karmaBalance: 100, karmaTier: 'good', points: 0,
   memberSince: dateStr(-800), createdAt: iso(-800), updatedAt: iso(-1),
@@ -160,38 +191,47 @@ interface G {
   id: string; title: string; format: GameFormat; venue: string;
   day: number; start: string; end: string; courts: number; capacity: number;
   level: Level | 'mixed'; gender?: 'male' | 'female' | 'mixed'; price?: number;
-  status: GameStatus; desc?: string;
+  status: GameStatus; desc?: string; league?: GameLeague;
 }
 const G_LIST: G[] = [
   // upcoming / live — next 2 weeks
-  { id: 'g6', title: 'Monday Night Fixed Pairs', format: 'fixed_pairs', venue: 'Padel Point, Al Quoz', day: 0, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'C', price: 90, status: 'live', desc: 'Bring your partner or get matched. Fixed pairs round-robin.' },
-  { id: 'g1', title: 'Tuesday Mexicano', format: 'team_mexicano', venue: 'Padel Point, Al Quoz', day: LATE_DEMO.day, start: LATE_DEMO.start, end: LATE_DEMO.end, courts: 3, capacity: 12, level: 'C', price: 90, status: 'upcoming', desc: 'Classic weekly Mexicano. Every point counts — rotating partners.' },
-  { id: 'g13', title: 'E / D Intro Session', format: 'social_shuffle', venue: 'Real Padel Club, Al Barsha', day: 2, start: '18:00', end: '19:30', courts: 2, capacity: 8, level: 'E', price: 60, status: 'upcoming', desc: 'Gentle intro session for Entry players. Coaches on court, focus on rallies and basics.' },
-  { id: 'g2', title: 'Ladies Court of Queens', format: 'king_queen_of_the_court', venue: 'Matcha Club, Al Quoz', day: 3, start: '18:30', end: '20:30', courts: 2, capacity: 8, level: 'mixed', gender: 'female', price: 100, status: 'upcoming', desc: 'Ladies-only ladder night. Win to move up a court, hold the queen court to take the crown.' },
-  { id: 'g14', title: 'D+ Social Shuffle', format: 'social_shuffle', venue: 'Matcha Club, Al Quoz', day: 4, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'D+', price: 80, status: 'upcoming', desc: 'Social night for D+ players building consistency and net awareness.' },
-  { id: 'g3', title: 'B+ King of the Court', format: 'king_of_the_court', venue: 'The Padel Lab, JLT', day: 5, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'B+', price: 110, status: 'upcoming', desc: 'High-intensity KOTC for B+ players. Winners stay on the king court.' },
-  { id: 'g15', title: 'C+ Friday Mexicano', format: 'team_mexicano', venue: 'Padel Point, Al Quoz', day: 6, start: '19:30', end: '21:30', courts: 3, capacity: 12, level: 'C+', price: 95, status: 'upcoming', desc: 'Friday Americano for C+ — solid pace, rotating partners.' },
-  { id: 'g16', title: 'C Strong Clinic', format: 'social_shuffle', venue: 'The Padel Lab, JLT', day: 7, start: '09:00', end: '10:30', courts: 2, capacity: 8, level: 'C Strong', price: 120, status: 'upcoming', desc: 'Morning clinic focused on bandeja, vibora, and transition play.' },
-  { id: 'g4', title: 'Sunday Social Shuffle', format: 'social_shuffle', venue: 'Real Padel Club, Al Barsha', day: 8, start: '10:00', end: '12:00', courts: 4, capacity: 16, level: 'mixed', price: 80, status: 'upcoming', desc: 'Relaxed Sunday morning shuffle. All levels welcome, partners rotate every round.' },
-  { id: 'g17', title: 'B Mexicano', format: 'team_mexicano', venue: 'ISD Sports City', day: 9, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'B', price: 110, status: 'upcoming', desc: 'Fast-paced Americano for B players.' },
-  { id: 'g20', title: 'King & Queen Mixed', format: 'king_queen_of_the_court', venue: 'Matcha Club, Al Quoz', day: 10, start: '18:30', end: '20:30', courts: 2, capacity: 8, level: 'C', price: 100, status: 'upcoming', desc: 'Mixed doubles ladder — each team is one man and one woman. Win to climb courts.' },
-  { id: 'g18', title: 'A / A+ Night', format: 'king_of_the_court', venue: 'The Padel Lab, JLT', day: 11, start: '21:00', end: '23:00', courts: 2, capacity: 8, level: 'A', price: 130, status: 'upcoming', desc: 'Late session for A and A+ — structured points, full intensity.' },
-  { id: 'g5', title: 'Nomads Mini-Tournament', format: 'mini_tournament', venue: 'ISD Sports City', day: 12, start: '17:00', end: '21:00', courts: 4, capacity: 16, level: 'mixed', price: 140, status: 'upcoming', desc: 'Monthly bracket tournament with group stage + knockouts. Prizes from our partners.' },
-  { id: 'g19', title: 'D Midweek Fixed Pairs', format: 'fixed_pairs', venue: 'Padel Point, Al Quoz', day: 13, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'D', price: 85, status: 'upcoming', desc: 'Fixed pairs for D level — learn positioning with a steady partner.' },
-  // past
-  { id: 'g7', title: 'Thursday Mexicano', format: 'team_mexicano', venue: 'Padel Point, Al Quoz', day: -2, start: '19:00', end: '21:00', courts: 3, capacity: 12, level: 'C', price: 90, status: 'completed' },
-  { id: 'g8', title: 'King & Queen Night', format: 'king_queen_of_the_court', venue: 'Matcha Club, Al Quoz', day: -5, start: '18:00', end: '20:00', courts: 2, capacity: 8, level: 'mixed', price: 100, status: 'completed' },
-  { id: 'g9', title: 'Weekend Social Shuffle', format: 'social_shuffle', venue: 'Real Padel Club, Al Barsha', day: -9, start: '10:00', end: '12:00', courts: 4, capacity: 16, level: 'mixed', price: 80, status: 'completed' },
-  { id: 'g10', title: 'B Mexicano', format: 'team_mexicano', venue: 'The Padel Lab, JLT', day: -14, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'B', price: 110, status: 'completed' },
-  { id: 'g11', title: 'July Mini-Tournament', format: 'mini_tournament', venue: 'ISD Sports City', day: -20, start: '17:00', end: '21:00', courts: 4, capacity: 16, level: 'mixed', price: 140, status: 'completed' },
-  { id: 'g12', title: 'E Entry Social', format: 'social_shuffle', venue: 'Real Padel Club, Al Barsha', day: -27, start: '09:00', end: '11:00', courts: 2, capacity: 8, level: 'E', price: 70, status: 'cancelled' },
+  { id: 'g6', title: 'Monday Night Fixed Pairs', format: 'fixed_pairs', venue: 'Padel Edition', day: 0, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'C', price: 90, status: 'live', desc: 'Bring your partner or get matched. Fixed pairs round-robin.' },
+  { id: 'g1', title: 'Tuesday Mexicano', format: 'team_mexicano', venue: 'Central Padel Al Quoz', day: LATE_DEMO.day, start: LATE_DEMO.start, end: LATE_DEMO.end, courts: 3, capacity: 12, level: 'C', price: 90, status: 'upcoming', desc: 'Classic weekly Mexicano. Every point counts — rotating partners.' },
+  { id: 'g13', title: 'E / D Intro Session', format: 'social_shuffle', venue: 'ZY Padel', day: 2, start: '18:00', end: '19:30', courts: 2, capacity: 8, level: 'E', price: 60, status: 'upcoming', desc: 'Gentle intro session for Entry players. Coaches on court, focus on rallies and basics.' },
+  { id: 'g2', title: 'Ladies Court of Queens', format: 'king_queen_of_the_court', venue: 'Central Padel Al Quoz', day: 3, start: '18:30', end: '20:30', courts: 2, capacity: 8, level: 'mixed', gender: 'female', price: 100, status: 'upcoming', desc: 'Ladies-only ladder night. Win to move up a court, hold the queen court to take the crown.' },
+  { id: 'g14', title: 'D+ Social Shuffle', format: 'social_shuffle', venue: 'ZY Padel', day: 4, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'D+', price: 80, status: 'upcoming', desc: 'Social night for D+ players building consistency and net awareness.' },
+  { id: 'g3', title: 'B+ King of the Court', format: 'king_of_the_court', venue: 'Padel Edition', day: 5, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'B+', price: 110, status: 'upcoming', desc: 'High-intensity KOTC for B+ players. Winners stay on the king court.' },
+  { id: 'g15', title: "Men's C+ League — Friday Mexicano", format: 'team_mexicano', venue: 'Padel Edition', day: 6, start: '19:30', end: '21:30', courts: 3, capacity: 12, level: 'C+', gender: 'male', price: 95, status: 'upcoming', league: 'mens_c_plus', desc: 'League night for Men’s C+. Rotating partners; results feed the Men’s C+ standings.' },
+  { id: 'g16', title: 'C Strong Clinic', format: 'social_shuffle', venue: 'ZY Padel', day: 7, start: '09:00', end: '10:30', courts: 2, capacity: 8, level: 'C Strong', price: 120, status: 'upcoming', desc: 'Morning clinic focused on bandeja, vibora, and transition play.' },
+  { id: 'g4', title: 'Sunday Social Shuffle', format: 'social_shuffle', venue: 'Central Padel Al Quoz', day: 8, start: '10:00', end: '12:00', courts: 4, capacity: 16, level: 'mixed', price: 80, status: 'upcoming', desc: 'Relaxed Sunday morning shuffle. All levels welcome, partners rotate every round.' },
+  { id: 'g17', title: 'B Mexicano', format: 'team_mexicano', venue: 'Central Padel Al Quoz', day: 9, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'B', price: 110, status: 'upcoming', desc: 'Fast-paced Americano for B players.' },
+  { id: 'g20', title: 'King & Queen Mixed', format: 'king_queen_of_the_court', venue: 'Padel Edition', day: 10, start: '18:30', end: '20:30', courts: 2, capacity: 8, level: 'C', price: 100, status: 'upcoming', desc: 'Mixed doubles ladder — each team is one man and one woman. Win to climb courts.' },
+  { id: 'g21', title: "Women's C League — Midweek Mexicano", format: 'team_mexicano', venue: 'Central Padel Al Quoz', day: 10, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'C', gender: 'female', price: 90, status: 'upcoming', league: 'womens_c', desc: 'Women’s C League Americano. Results count toward the Women’s C standings.' },
+  { id: 'g18', title: 'A / A+ Night', format: 'king_of_the_court', venue: 'Central Padel Al Quoz', day: 11, start: '21:00', end: '23:00', courts: 2, capacity: 8, level: 'A', price: 130, status: 'upcoming', desc: 'Late session for A and A+ — structured points, full intensity.' },
+  { id: 'g5', title: 'Nomads Mini-Tournament', format: 'mini_tournament', venue: 'Padel Edition', day: 12, start: '17:00', end: '21:00', courts: 4, capacity: 16, level: 'mixed', price: 140, status: 'upcoming', desc: 'Monthly bracket tournament with group stage + knockouts. Prizes from our partners.' },
+  { id: 'g19', title: 'D Midweek Fixed Pairs', format: 'fixed_pairs', venue: 'ZY Padel', day: 13, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'D', price: 85, status: 'upcoming', desc: 'Fixed pairs for D level — learn positioning with a steady partner.' },
+  // past — community (untagged)
+  { id: 'g7', title: 'Thursday Mexicano', format: 'team_mexicano', venue: 'Padel Edition', day: -2, start: '19:00', end: '21:00', courts: 3, capacity: 12, level: 'C', price: 90, status: 'completed' },
+  { id: 'g8', title: 'King & Queen Night', format: 'king_queen_of_the_court', venue: 'Central Padel Al Quoz', day: -5, start: '18:00', end: '20:00', courts: 2, capacity: 8, level: 'mixed', price: 100, status: 'completed' },
+  { id: 'g9', title: 'Weekend Social Shuffle', format: 'social_shuffle', venue: 'ZY Padel', day: -9, start: '10:00', end: '12:00', courts: 4, capacity: 16, level: 'mixed', price: 80, status: 'completed' },
+  { id: 'g10', title: 'B Mexicano', format: 'team_mexicano', venue: 'Central Padel Al Quoz', day: -14, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'B', price: 110, status: 'completed' },
+  { id: 'g11', title: 'July Mini-Tournament', format: 'mini_tournament', venue: 'Padel Edition', day: -20, start: '17:00', end: '21:00', courts: 4, capacity: 16, level: 'mixed', price: 140, status: 'completed' },
+  { id: 'g12', title: 'E Entry Social', format: 'social_shuffle', venue: 'ZY Padel', day: -27, start: '09:00', end: '11:00', courts: 2, capacity: 8, level: 'E', price: 70, status: 'cancelled' },
+  // past — Men's C+ League
+  { id: 'g22', title: "Men's C+ League — Week 3 Mexicano", format: 'team_mexicano', venue: 'Padel Edition', day: -4, start: '19:30', end: '21:30', courts: 3, capacity: 12, level: 'C+', gender: 'male', price: 95, status: 'completed', league: 'mens_c_plus', desc: 'League round — Men’s C+ only.' },
+  { id: 'g23', title: "Men's C+ League — Week 2 KOTC", format: 'king_of_the_court', venue: 'Central Padel Al Quoz', day: -11, start: '20:00', end: '22:00', courts: 2, capacity: 8, level: 'C+', gender: 'male', price: 100, status: 'completed', league: 'mens_c_plus', desc: 'League ladder night for Men’s C+.' },
+  { id: 'g24', title: "Men's C+ League — Week 1 Mexicano", format: 'team_mexicano', venue: 'ZY Padel', day: -18, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'C+', gender: 'male', price: 95, status: 'completed', league: 'mens_c_plus' },
+  // past — Women's C League
+  { id: 'g25', title: "Women's C League — Week 3 Mexicano", format: 'team_mexicano', venue: 'Central Padel Al Quoz', day: -3, start: '18:30', end: '20:30', courts: 2, capacity: 8, level: 'C', gender: 'female', price: 90, status: 'completed', league: 'womens_c', desc: 'League round — Women’s C only.' },
+  { id: 'g26', title: "Women's C League — Week 2 Queens", format: 'king_queen_of_the_court', venue: 'Padel Edition', day: -10, start: '18:00', end: '20:00', courts: 2, capacity: 8, level: 'C', gender: 'female', price: 95, status: 'completed', league: 'womens_c' },
+  { id: 'g27', title: "Women's C League — Week 1 Mexicano", format: 'team_mexicano', venue: 'ZY Padel', day: -17, start: '19:00', end: '21:00', courts: 2, capacity: 8, level: 'C', gender: 'female', price: 90, status: 'completed', league: 'womens_c' },
 ];
 
 export const seedGames: Game[] = G_LIST.map((g) => ({
   id: g.id, title: g.title, format: g.format, venue: g.venue,
   date: dateStr(g.day), startTime: g.start, endTime: g.end,
   courts: g.courts, capacity: g.capacity, level: g.level,
-  genderRestriction: g.gender, price: g.price, description: g.desc,
+  genderRestriction: g.gender, league: g.league, price: g.price, description: g.desc,
   status: g.status,
   reminderSchedule: ['24h', '2h'],
   createdBy: 'admin1', createdAt: iso(g.day - 14), updatedAt: iso(g.day - 1),
@@ -221,25 +261,47 @@ function pastRoster(gameId: string, userIds: string[], day: number): GamePartici
 }
 
 export const seedParticipants: GameParticipant[] = [
-  // g1 Tuesday Mexicano (u1 confirmed — next game)
-  part('g1', 'u1', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g1', 'u2', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g1', 'u4', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g1', 'u7', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g1', 'u9', 'confirmed', { confirmedAt: iso(-2) }),
-  part('g1', 'u12', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g1', 'u14', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g1', 'u19', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g1', 'u22', 'confirmed', { confirmedAt: iso(-2) }),
+  // g1 Tuesday Mexicano — team format, capacity 12 → max 6 teams
+  // Priority mix: full pairs → partner pending → solos
+  part('g1', 'u1', 'confirmed', { confirmedAt: iso(-1), teamEntryKind: 'full_pair', partnerName: 'Sam Okonkwo' }),
+  part('g1', 'u2', 'confirmed', { confirmedAt: iso(-1), teamEntryKind: 'full_pair', partnerUserId: 'u28' }),
+  part('g1', 'u28', 'confirmed', { confirmedAt: iso(-1), teamEntryKind: 'full_pair', partnerUserId: 'u2' }),
+  part('g1', 'u4', 'confirmed', {
+    confirmedAt: iso(-1),
+    teamEntryKind: 'partner_pending',
+    partnerNameDueAt: (() => { const d = new Date(); d.setHours(20, 0, 0, 0); if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1); return d.toISOString(); })(),
+  }),
+  part('g1', 'u7', 'confirmed', {
+    confirmedAt: iso(-2),
+    teamEntryKind: 'partner_pending',
+    partnerNameDueAt: (() => { const d = new Date(); d.setHours(20, 0, 0, 0); if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1); return d.toISOString(); })(),
+  }),
+  part('g1', 'u9', 'confirmed', { confirmedAt: iso(-2), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g1', 'u12', 'confirmed', { confirmedAt: iso(-1), lookingForPartner: true, teamEntryKind: 'solo' }),
   part('g1', 'u27', 'cancelled', { cancelledAt: iso(0, 9) }),
-  part('g1', 'u32', 'waitlisted'),
-  // g2 Ladies Court of Queens
-  part('g2', 'u2', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g2', 'u8', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g2', 'u18', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g2', 'u24', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g2', 'u28', 'confirmed', { confirmedAt: iso(-1) }),
-  part('g2', 'u12', 'confirmed', { confirmedAt: iso(-2) }),
+  // Waitlist: full pair unit first, then pending, then solos (karma within tier)
+  part('g1', 'u14', 'waitlisted', { createdAt: iso(-3), teamEntryKind: 'full_pair', partnerUserId: 'u24' }),
+  part('g1', 'u24', 'waitlisted', { createdAt: iso(-3), teamEntryKind: 'full_pair', partnerUserId: 'u14' }),
+  part('g1', 'u18', 'waitlisted', {
+    createdAt: iso(-2),
+    teamEntryKind: 'partner_pending',
+    partnerNameDueAt: (() => { const d = new Date(); d.setHours(20, 0, 0, 0); if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1); return d.toISOString(); })(),
+  }),
+  part('g1', 'u3', 'waitlisted', { createdAt: iso(-2, 14), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g1', 'u32', 'waitlisted', { createdAt: iso(-2), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g1', 'u8', 'waitlisted', { createdAt: iso(-1), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g1', 'u22', 'waitlisted', { createdAt: iso(-1), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g1', 'u19', 'waitlisted', { createdAt: iso(0, 10), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g1', 'u21', 'waitlisted', { createdAt: iso(0, 11), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g1', 'u25', 'waitlisted', { createdAt: iso(0, 12), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g1', 'u31', 'waitlisted', { createdAt: iso(0, 13), lookingForPartner: true, teamEntryKind: 'solo' }),
+  // g2 Ladies Court of Queens — capacity 8 → max 4 teams
+  part('g2', 'u2', 'confirmed', { confirmedAt: iso(-1), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g2', 'u8', 'confirmed', { confirmedAt: iso(-1), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g2', 'u18', 'confirmed', { confirmedAt: iso(-1), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g2', 'u24', 'confirmed', { confirmedAt: iso(-1), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g2', 'u28', 'waitlisted', { createdAt: iso(-1), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g2', 'u12', 'waitlisted', { createdAt: iso(-2), lookingForPartner: true, teamEntryKind: 'solo' }),
   // g3 B+ KOTC (u1 confirmed)
   part('g3', 'u3', 'confirmed', { confirmedAt: iso(-1) }),
   part('g3', 'u5', 'confirmed', { confirmedAt: iso(-2) }),
@@ -263,6 +325,9 @@ export const seedParticipants: GameParticipant[] = [
   part('g5', 'u13', 'confirmed', { confirmedAt: iso(-1) }),
   part('g5', 'u18', 'confirmed', { confirmedAt: iso(-1) }),
   part('g5', 'u23', 'confirmed', { confirmedAt: iso(-1) }),
+  // g15 C+ Friday Mexicano — James invited Alex (demo: awaiting confirmation on home)
+  part('g15', 'u3', 'confirmed', { confirmedAt: iso(-1), lookingForPartner: true, teamEntryKind: 'solo' }),
+  part('g15', 'u1', 'confirmed', { confirmedAt: iso(-1), partnerInviteFrom: 'u3' }),
   // g6 LIVE Fixed Pairs — 4 teams (8 players)
   part('g6', 'u3', 'confirmed', { confirmedAt: iso(-1), attendance: 'on_time', paymentStatus: 'paid', partnerUserId: 'u8' }),
   part('g6', 'u8', 'confirmed', { confirmedAt: iso(-1), attendance: 'on_time', paymentStatus: 'paid', partnerUserId: 'u3' }),
@@ -272,16 +337,28 @@ export const seedParticipants: GameParticipant[] = [
   part('g6', 'u25', 'confirmed', { confirmedAt: iso(-1), attendance: 'on_time', paymentStatus: 'pending', partnerUserId: 'u22' }),
   part('g6', 'u29', 'confirmed', { confirmedAt: iso(-1), attendance: 'on_time', paymentStatus: 'paid', partnerUserId: 'u31' }),
   part('g6', 'u31', 'confirmed', { confirmedAt: iso(-1), attendance: 'on_time', paymentStatus: 'paid', partnerUserId: 'u29' }),
-  // g19 Fixed Pairs — 3 open teams looking for partners (capacity 4 teams / 8 players)
+  // g19 Fixed Pairs — full (4 team slots). Waitlist has a linked team + a solo.
   part('g19', 'u6', 'confirmed', { confirmedAt: iso(-1), lookingForPartner: true }),
   part('g19', 'u10', 'confirmed', { confirmedAt: iso(-1), lookingForPartner: true }),
   part('g19', 'u16', 'confirmed', { confirmedAt: iso(-1), lookingForPartner: true }),
+  part('g19', 'u19', 'confirmed', { confirmedAt: iso(-1), lookingForPartner: true }),
+  part('g19', 'u14', 'waitlisted', { createdAt: iso(-2), partnerUserId: 'u24' }),
+  part('g19', 'u24', 'waitlisted', { createdAt: iso(-2), partnerUserId: 'u14' }),
+  part('g19', 'u4', 'waitlisted', { createdAt: iso(-1), lookingForPartner: true }),
   // past games
   ...pastRoster('g7', ['u1', 'u2', 'u4', 'u7', 'u9', 'u12', 'u19', 'u22', 'u27', 'u29', 'u32', 'u33'], -2),
   ...pastRoster('g8', ['u3', 'u8', 'u5', 'u18', 'u13', 'u28', 'u21', 'u34'], -5),
   ...pastRoster('g9', ['u1', 'u6', 'u10', 'u14', 'u16', 'u20', 'u24', 'u26', 'u30', 'u37', 'u39', 'u35'], -9),
   ...pastRoster('g10', ['u5', 'u11', 'u13', 'u15', 'u23', 'u25', 'u3', 'u21'], -14),
   ...pastRoster('g11', ['u1', 'u2', 'u3', 'u5', 'u8', 'u11', 'u13', 'u15', 'u18', 'u21', 'u23', 'u28', 'u31', 'u25', 'u9', 'u17'], -20),
+  // Men's C+ League completed
+  ...pastRoster('g22', ['u1', 'u7', 'u9', 'u17', 'u19', 'u27', 'u29', 'u31', 'u33', 'u35', 'u11', 'u15'], -4),
+  ...pastRoster('g23', ['u1', 'u9', 'u17', 'u19', 'u27', 'u29', 'u7', 'u33'], -11),
+  ...pastRoster('g24', ['u7', 'u9', 'u17', 'u19', 'u27', 'u29', 'u1', 'u35'], -18),
+  // Women's C League completed
+  ...pastRoster('g25', ['u4', 'u12', 'u14', 'u22', 'u24', 'u32', 'u39', 'u8'], -3),
+  ...pastRoster('g26', ['u4', 'u12', 'u14', 'u22', 'u24', 'u32', 'u2', 'u18'], -10),
+  ...pastRoster('g27', ['u12', 'u14', 'u22', 'u24', 'u32', 'u39', 'u4', 'u28'], -17),
 ];
 
 // Detailed historical scoring data for completed games. New game results are
@@ -326,7 +403,7 @@ for (const game of seedGames.filter((g) => g.status === 'completed')) {
     });
   }
 
-  const roundCount = FORMAT_CONFIG[game.format].rounds.length;
+  const roundCount = formatConfig(game.format).rounds.length;
   for (let round = 0; round < roundCount; round++) {
     roundMatches.forEach((match, index) => {
       const aWins = (round + index) % 2 === 0;
@@ -367,17 +444,93 @@ export const seedApplications: Application[] = [
   { id: 'a8', name: 'Stefan Horvat', level: 'C', preferredSide: 'left', gender: 'male', referralSource: 'instagram', phoneNumber: '+971529001008', whatsappOptIn: false, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'rejected', reviewedBy: 'admin1', reviewedAt: iso(-7), createdAt: iso(-10), updatedAt: iso(-7) },
 ];
 
+// ---- clubs (partner venues) ----
+export const seedClubs: Club[] = [
+  {
+    id: 'club1',
+    name: 'Padel Edition',
+    description:
+      'Indoor wellness and sports club in Al Quoz with eight pro-standard air-conditioned courts, contrast recovery (ice bath & infrared sauna), yoga / mobility studio, Face Gym, and Fuel Café.',
+    mapsUrl: 'https://maps.google.com/?q=Padel+Edition+18th+Street+Al+Quoz+Industrial+1+Dubai',
+    instagramUrl: 'https://www.instagram.com/padeledition/',
+    imageUrl: '/clubs/padel-edition.jpg',
+    courtCount: 8,
+    courtNames: [
+      'Court 1', 'Court 2', 'Court 3', 'Court 4',
+      'Court 5', 'Court 6', 'Court 7', 'Court 8',
+    ],
+    amenities: [
+      'cold_plunge',
+      'sauna',
+      'yoga_room',
+      'recovery_center',
+      'cafeteria',
+      'padel_equipment_shop',
+    ],
+    status: 'active',
+    createdAt: iso(-60),
+    updatedAt: iso(-1),
+  },
+  {
+    id: 'club2',
+    name: 'Central Padel Al Quoz',
+    description:
+      'First official World Padel Tour–certified indoor facility in Dubai. Seven climate-controlled courts including Centre Court, plus physiotherapy, cold plunge, café, and a pro shop in Al Quoz Industrial Area 3.',
+    mapsUrl: 'https://maps.google.com/?q=Central+Padel+Dubai+14+11A+Street+Al+Quoz+Industrial+Area+3',
+    instagramUrl: 'https://www.instagram.com/centralpadeldubai/',
+    imageUrl: '/clubs/central-padel.jpg',
+    courtCount: 7,
+    courtNames: [
+      'Centre Court', 'Court 2', 'Court 3', 'Court 4',
+      'Court 5', 'Court 6', 'Court 7',
+    ],
+    amenities: [
+      'cold_plunge',
+      'recovery_center',
+      'gym',
+      'cafeteria',
+      'padel_equipment_shop',
+    ],
+    status: 'active',
+    createdAt: iso(-55),
+    updatedAt: iso(-1),
+  },
+  {
+    id: 'club3',
+    name: 'ZY Padel',
+    description:
+      'ZY Padel & Fitness Hub on 18th Street, Al Quoz — six padel courts (indoor and outdoor), healthy snack bar, equipment rental, reformer pilates, and coworking workspaces.',
+    mapsUrl: 'https://maps.google.com/?q=ZY+Padel+and+Fitness+Hub+18th+Street+Al+Quoz+Dubai',
+    instagramUrl: 'https://www.instagram.com/zyhub.ae/',
+    imageUrl: '/clubs/zy-padel.jpg',
+    courtCount: 6,
+    courtNames: [
+      'Indoor Padel 1', 'Indoor Padel 2', 'Indoor Padel 3', 'Indoor Padel 4',
+      'Outdoor Padel 5', 'Outdoor Padel 6',
+    ],
+    amenities: [
+      'cafeteria',
+      'gym',
+      'yoga_room',
+      'padel_equipment_shop',
+    ],
+    status: 'active',
+    createdAt: iso(-50),
+    updatedAt: iso(-1),
+  },
+];
+
 // ---- offers (~6) ----
 export const seedOffers: Offer[] = [
   {
     id: 'o1',
-    title: '20% off court bookings',
-    partnerName: 'Padel Point',
-    description: 'Members get 20% off all off-peak court bookings at Padel Point Al Quoz. Book through the app or at reception with your promo code.',
+    title: '20% off off-peak courts',
+    partnerName: 'Padel Edition',
+    description: 'Members get 20% off off-peak court bookings at Padel Edition (Al Quoz). Book through the app or at reception with your promo code.',
     promoCode: 'NOMADS20',
-    link: 'https://example.com/padelpoint',
-    instagramUrl: 'https://instagram.com/padelpoint',
-    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=Padel%20Point&backgroundColor=1a1a1a&textColor=c6e03a',
+    link: 'https://padeledition.ae/',
+    instagramUrl: 'https://instagram.com/padeledition',
+    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=Padel%20Edition&backgroundColor=1a1a1a&textColor=c6e03a',
     startDate: dateStr(-10),
     endDate: dateStr(30),
     status: 'active',
@@ -386,12 +539,12 @@ export const seedOffers: Offer[] = [
   },
   {
     id: 'o2',
-    title: 'Free protein shake with any smoothie',
-    partnerName: 'Matcha Club Café',
-    description: 'Show your Padel Nomads membership after any game at Matcha Club and get a free protein shake with any smoothie order.',
-    link: 'https://example.com/matchaclub',
-    instagramUrl: 'https://instagram.com/matchaclub',
-    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=Matcha%20Club&backgroundColor=1a1a1a&textColor=c6e03a',
+    title: 'Free Fuel Café smoothie add-on',
+    partnerName: 'Padel Edition',
+    description: 'Show your Padel Nomads membership after any game at Padel Edition and get a free protein add-on with any Fuel Café smoothie.',
+    link: 'https://padeledition.ae/',
+    instagramUrl: 'https://instagram.com/padeledition',
+    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=Fuel%20Cafe&backgroundColor=1a1a1a&textColor=c6e03a',
     startDate: dateStr(-20),
     endDate: dateStr(20),
     status: 'active',
@@ -400,13 +553,13 @@ export const seedOffers: Offer[] = [
   },
   {
     id: 'o3',
-    title: '15% off Bullpadel rackets',
-    partnerName: 'Padel Gear UAE',
-    description: 'Exclusive discount on the full Bullpadel range, including the Vertex and Hack series. Online and in-store.',
+    title: '15% off pro shop rackets',
+    partnerName: 'Central Padel Al Quoz',
+    description: 'Exclusive discount on selected rackets at the Central Padel pro shop. Mention Padel Nomads at checkout.',
     promoCode: 'PN-BULL15',
-    link: 'https://example.com/padelgear',
-    instagramUrl: 'https://instagram.com/padelgearuae',
-    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=Padel%20Gear&backgroundColor=1a1a1a&textColor=c6e03a',
+    link: 'https://centralpadel.ae/',
+    instagramUrl: 'https://instagram.com/centralpadeldubai',
+    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=Central%20Padel&backgroundColor=1a1a1a&textColor=c6e03a',
     startDate: dateStr(-5),
     endDate: dateStr(45),
     status: 'active',
@@ -416,12 +569,12 @@ export const seedOffers: Offer[] = [
   {
     id: 'o4',
     title: 'Physio assessment for AED 99',
-    partnerName: 'MoveWell Clinic',
-    description: 'Full-body movement and injury-risk assessment for members, normally AED 350. Perfect if you play 3+ times a week.',
+    partnerName: 'Central Padel Al Quoz',
+    description: 'Member rate on a movement and injury-risk assessment at Central Padel’s recovery / physio desk — ideal if you play 3+ times a week.',
     promoCode: 'NOMADSPHYSIO',
-    link: 'https://example.com/movewell',
-    instagramUrl: 'https://instagram.com/movewellclinic',
-    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=MoveWell&backgroundColor=1a1a1a&textColor=c6e03a',
+    link: 'https://centralpadel.ae/',
+    instagramUrl: 'https://instagram.com/centralpadeldubai',
+    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=Central%20Physio&backgroundColor=1a1a1a&textColor=c6e03a',
     startDate: dateStr(-3),
     endDate: dateStr(60),
     status: 'active',
@@ -430,12 +583,12 @@ export const seedOffers: Offer[] = [
   },
   {
     id: 'o5',
-    title: 'Summer camp early-bird',
-    partnerName: 'The Padel Lab',
-    description: 'Early-bird pricing on the junior summer camp for members\' kids.',
-    link: 'https://example.com/padellab',
-    instagramUrl: 'https://instagram.com/thepadellab',
-    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=Padel%20Lab&backgroundColor=1a1a1a&textColor=c6e03a',
+    title: 'Intro pilates class',
+    partnerName: 'ZY Padel',
+    description: 'One complimentary reformer pilates intro class at ZY Hub for members after any Nomads game at ZY Padel.',
+    link: 'https://zyhub.ae/',
+    instagramUrl: 'https://www.instagram.com/zyhub.ae/',
+    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=ZY%20Padel&backgroundColor=1a1a1a&textColor=c6e03a',
     startDate: dateStr(-60),
     endDate: dateStr(-10),
     status: 'inactive',
@@ -444,13 +597,13 @@ export const seedOffers: Offer[] = [
   },
   {
     id: 'o6',
-    title: '2-for-1 padel socks',
-    partnerName: 'Padel Gear UAE',
-    description: 'Buy one pair of grip socks, get one free.',
-    promoCode: 'PNSOCKS',
-    link: 'https://example.com/padelgear',
-    instagramUrl: 'https://instagram.com/padelgearuae',
-    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=Padel%20Gear&backgroundColor=1a1a1a&textColor=c6e03a',
+    title: '2-for-1 café drinks',
+    partnerName: 'ZY Padel',
+    description: 'Buy one drink at the ZY Hub café, get one free — valid after Nomads sessions.',
+    promoCode: 'PNCAFE',
+    link: 'https://zyhub.ae/',
+    instagramUrl: 'https://www.instagram.com/zyhub.ae/',
+    logoUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=ZY%20Cafe&backgroundColor=1a1a1a&textColor=c6e03a',
     startDate: dateStr(-90),
     endDate: dateStr(-30),
     status: 'inactive',
@@ -463,8 +616,8 @@ export const seedOffers: Offer[] = [
 export const seedNotifications: AppNotification[] = [
   { id: 'n1', userId: 'u1', title: 'Confirm your spot', message: 'Please confirm your participation in Tuesday Mexicano.', type: 'confirmation_request', channel: 'whatsapp', isRead: false, relatedOutboundMessageId: 'om3', relatedGameId: 'g1', createdAt: iso(-1, 18) },
   { id: 'n2', userId: 'u1', title: 'Result published', message: 'Results for Thursday Mexicano are out — you finished 1st and earned 20 points!', type: 'result_published', channel: 'in_app', isRead: false, relatedGameId: 'g7', createdAt: iso(-2, 22) },
-  { id: 'n3', userId: 'u1', title: 'New offer added', message: '15% off Bullpadel rackets at Padel Gear UAE.', type: 'offer_added', channel: 'whatsapp', isRead: false, relatedOfferId: 'o3', createdAt: iso(-5, 12) },
-  { id: 'n4', userId: 'u1', title: 'Added to game', message: 'You were added to Sunday Social Shuffle at Real Padel Club.', type: 'added_to_game', channel: 'whatsapp', isRead: true, relatedGameId: 'g4', createdAt: iso(-6, 15) },
+  { id: 'n3', userId: 'u1', title: 'New offer added', message: '15% off pro shop rackets at Central Padel Al Quoz.', type: 'offer_added', channel: 'whatsapp', isRead: false, relatedOfferId: 'o3', createdAt: iso(-5, 12) },
+  { id: 'n4', userId: 'u1', title: 'Added to game', message: 'You were added to Sunday Social Shuffle at Central Padel Al Quoz.', type: 'added_to_game', channel: 'whatsapp', isRead: true, relatedGameId: 'g4', createdAt: iso(-6, 15) },
   { id: 'n5', userId: 'u1', title: 'Game updated', message: 'B+ King of the Court moved to 20:00 (was 19:30).', type: 'game_updated', channel: 'in_app', isRead: true, relatedGameId: 'g3', createdAt: iso(-7, 10) },
   { id: 'n6', userId: 'u1', title: 'Game cancelled', message: 'E Entry Social on ' + dateStr(-27) + ' was cancelled due to court maintenance.', type: 'game_cancelled', channel: 'whatsapp', isRead: true, relatedGameId: 'g12', createdAt: iso(-27, 9) },
   { id: 'n7', userId: 'u1', title: 'Result published', message: 'Results for July Mini-Tournament are out — you finished 1st!', type: 'result_published', channel: 'in_app', isRead: true, relatedGameId: 'g11', createdAt: iso(-20, 22) },
@@ -475,6 +628,20 @@ export const seedNotifications: AppNotification[] = [
   { id: 'na2', userId: 'admin1', audience: 'admin', title: 'New application', message: 'Priya Sharma applied (D). Review pending.', type: 'admin_new_application', channel: 'in_app', isRead: false, relatedApplicationId: 'a2', createdAt: iso(-2) },
   { id: 'na3', userId: 'admin1', audience: 'admin', title: 'Late cancellation — action needed', message: 'Alex Ivanov cancelled Tuesday Mexicano late. Collect fee (AED 90) and fill the spot.', type: 'admin_late_cancellation', channel: 'in_app', isRead: false, relatedGameId: 'g1', createdAt: iso(-1, 20) },
   { id: 'na4', userId: 'admin1', audience: 'admin', title: 'Replacement needed', message: 'Maria Petrova needs a late-cancel replacement for Tuesday Mexicano — no waitlist available.', type: 'admin_replacement_needed', channel: 'in_app', isRead: true, relatedGameId: 'g1', createdAt: iso(-3, 14) },
+  { id: 'na5', userId: 'admin1', audience: 'admin', title: 'Support request — Payment', message: 'Maria Petrova needs help (Payment). Contact: +971550137113. Issue: Charged twice for last Thursday’s game — need a refund or credit.', type: 'admin_support_request', channel: 'in_app', isRead: false, relatedSupportRequestId: 'sr1', createdAt: iso(0, 11) },
+];
+
+// ---- support requests (player → admin tickets) ----
+export const seedSupportRequests: SupportRequest[] = [
+  {
+    id: 'sr1',
+    userId: 'u2',
+    category: 'payment',
+    issue: 'Charged twice for last Thursday’s game — need a refund or credit.',
+    contactPhone: '+971550137113',
+    status: 'open',
+    createdAt: iso(0, 11),
+  },
 ];
 
 // ---- karma events ----
@@ -555,20 +722,20 @@ function om(userId: string, templateId: string, status: OutboundMessage['status'
 }
 
 export const seedOutbound: OutboundMessage[] = [
-  om('u2', 't1', 'read', -1, 'Hi Maria, reminder: Tuesday Americano tomorrow at 19:00, Padel Point.'),
-  om('u4', 't1', 'delivered', -1, 'Hi Sofia, reminder: Tuesday Americano tomorrow at 19:00, Padel Point.'),
-  om('u1', 't1', 'read', -1, 'Hi Alex, reminder: Tuesday Mexicano tomorrow at 19:00, Padel Point.'),
-  om('u7', 't1', 'delivered', -1, 'Hi Omar, reminder: Tuesday Mexicano tomorrow at 19:00, Padel Point.'),
-  om('u14', 't2', 'sent', -1, 'Hi Yuki, Tuesday Mexicano starts in 2 hours at Padel Point. See you on court!'),
-  om('u9', 't1', 'read', -1, 'Hi Lucas, reminder: Tuesday Mexicano tomorrow at 19:00, Padel Point.'),
-  om('u12', 't1', 'read', -1, 'Hi Chloe, reminder: Tuesday Mexicano tomorrow at 19:00, Padel Point.'),
-  om('u19', 't1', 'failed', -1, 'Hi Carlos, reminder: Tuesday Mexicano tomorrow at 19:00, Padel Point.', { errorCode: '131026', errorDetail: 'Message undeliverable: recipient may have changed number' }),
-  om('u22', 't4', 'read', -3, 'Hannah, our partner Padel Gear UAE has a new offer: 15% off Bullpadel rackets. Use code PN-BULL15.', { campaignId: 'c-offer-o3' }),
-  om('u2', 't4', 'delivered', -3, 'Maria, our partner Padel Gear UAE has a new offer: 15% off Bullpadel rackets. Use code PN-BULL15.', { campaignId: 'c-offer-o3' }),
-  om('u8', 't4', 'dropped', -3, 'Emma, our partner Padel Gear UAE has a new offer: 15% off Bullpadel rackets. Use code PN-BULL15.', { campaignId: 'c-offer-o3', errorCode: '131049', errorDetail: 'Dropped by Meta: per-user marketing frequency cap' }),
-  om('u24', 't4', 'read', -3, 'Aisha, our partner Padel Gear UAE has a new offer: 15% off Bullpadel rackets. Use code PN-BULL15.', { campaignId: 'c-offer-o3' }),
-  om('u6', 't1', 'read', -2, 'Hi Laura, reminder: Sunday Social Shuffle on Sunday at 10:00, Real Padel Club.'),
-  om('u30', 't2', 'queued', 0, 'Hi Fatima, Sunday Social Shuffle starts in 2 hours at Real Padel Club. See you on court!'),
+  om('u2', 't1', 'read', -1, 'Hi Maria, reminder: Tuesday Americano tomorrow at 19:00, Central Padel Al Quoz.'),
+  om('u4', 't1', 'delivered', -1, 'Hi Sofia, reminder: Tuesday Americano tomorrow at 19:00, Central Padel Al Quoz.'),
+  om('u1', 't1', 'read', -1, 'Hi Alex, reminder: Tuesday Mexicano tomorrow at 19:00, Central Padel Al Quoz.'),
+  om('u7', 't1', 'delivered', -1, 'Hi Omar, reminder: Tuesday Mexicano tomorrow at 19:00, Central Padel Al Quoz.'),
+  om('u14', 't2', 'sent', -1, 'Hi Yuki, Tuesday Mexicano starts in 2 hours at Central Padel Al Quoz. See you on court!'),
+  om('u9', 't1', 'read', -1, 'Hi Lucas, reminder: Tuesday Mexicano tomorrow at 19:00, Central Padel Al Quoz.'),
+  om('u12', 't1', 'read', -1, 'Hi Chloe, reminder: Tuesday Mexicano tomorrow at 19:00, Central Padel Al Quoz.'),
+  om('u19', 't1', 'failed', -1, 'Hi Carlos, reminder: Tuesday Mexicano tomorrow at 19:00, Central Padel Al Quoz.', { errorCode: '131026', errorDetail: 'Message undeliverable: recipient may have changed number' }),
+  om('u22', 't4', 'read', -3, 'Hannah, our partner Central Padel Al Quoz has a new offer: 15% off pro shop rackets. Use code PN-BULL15.', { campaignId: 'c-offer-o3' }),
+  om('u2', 't4', 'delivered', -3, 'Maria, our partner Central Padel Al Quoz has a new offer: 15% off pro shop rackets. Use code PN-BULL15.', { campaignId: 'c-offer-o3' }),
+  om('u8', 't4', 'dropped', -3, 'Emma, our partner Central Padel Al Quoz has a new offer: 15% off pro shop rackets. Use code PN-BULL15.', { campaignId: 'c-offer-o3', errorCode: '131049', errorDetail: 'Dropped by Meta: per-user marketing frequency cap' }),
+  om('u24', 't4', 'read', -3, 'Aisha, our partner Central Padel Al Quoz has a new offer: 15% off pro shop rackets. Use code PN-BULL15.', { campaignId: 'c-offer-o3' }),
+  om('u6', 't1', 'read', -2, 'Hi Laura, reminder: Sunday Social Shuffle on Sunday at 10:00, Central Padel Al Quoz.'),
+  om('u30', 't2', 'queued', 0, 'Hi Fatima, Sunday Social Shuffle starts in 2 hours at Central Padel Al Quoz. See you on court!'),
   om('u18', 't3', 'read', -6, 'Welcome to Padel Nomads, Mia! Your application has been approved.'),
 ];
 

@@ -8,9 +8,8 @@ import {
 import { cn } from '@/lib/utils';
 import { Logo } from '@/components/logo';
 import { RoleSwitcher } from '@/components/role-switcher';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PlayerAvatar } from '@/components/player-avatar';
 import { useMockData } from '@/data/provider';
-import { initials } from '@/lib/format';
 
 const NAV = [
   { href: '/app', label: 'Home', icon: Home },
@@ -57,11 +56,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
             </Link>
             <Link href="/app/profile" aria-label="Profile">
-              <Avatar className="size-8 ring-1 ring-white/15">
-                <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">
-                  {initials(currentUser.name)}
-                </AvatarFallback>
-              </Avatar>
+              <PlayerAvatar
+                user={currentUser}
+                className="size-8 ring-1 ring-white/15"
+                fallbackClassName="bg-primary/15 text-xs"
+              />
             </Link>
           </div>
         </div>

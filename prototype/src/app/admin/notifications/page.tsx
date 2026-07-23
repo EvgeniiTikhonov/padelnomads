@@ -3,13 +3,14 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  Bell, CheckCheck, ChevronRight, Inbox, UserMinus, AlertTriangle, RefreshCw,
+  Bell, CheckCheck, ChevronRight, Inbox, UserMinus, AlertTriangle, RefreshCw, LifeBuoy,
+  MessageCircle,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useMockData } from '@/data/provider';
-import { timeAgo } from '@/lib/format';
+import { playerWhatsAppUrl, SUPPORT_CATEGORY_LABELS, timeAgo } from '@/lib/format';
 import { adminNotificationHref, notificationIsActionable } from '@/lib/notifications';
 import type { AppNotification } from '@/types';
 
@@ -19,17 +20,22 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   admin_late_cancellation: AlertTriangle,
   admin_replacement_needed: AlertTriangle,
   admin_replacement_offered: RefreshCw,
+  admin_support_request: LifeBuoy,
 };
 
 function actionLabel(n: AppNotification): string {
   if (n.relatedApplicationId) return 'Review application';
   if (n.type === 'admin_replacement_needed' || n.type === 'admin_late_cancellation') return 'Open game';
+  if (n.type === 'admin_support_request') return 'Contact player';
   if (n.relatedGameId) return 'View game';
   return 'Open';
 }
 
 export default function AdminNotificationsPage() {
-  const { notifications, currentUser, markNotificationRead, markAllNotificationsRead } = useMockData();
+  const {
+    notifications, supportRequests, users, currentUser,
+    markNotificationRead, markAllNotificationsRead,
+  } = useMockData();
   const mine = notifications
     .filter((n) => n.userId === currentUser.id && n.audience === 'admin')
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -56,7 +62,7 @@ export default function AdminNotificationsPage() {
           <Bell className="size-8 text-muted-foreground" />
           <p className="font-medium">No attention items</p>
           <p className="text-sm text-muted-foreground">
-            New applications and player cancellations will show up here.
+            New applications, cancellations, and support requests will show up here.
           </p>
         </div>
       ) : (
@@ -66,16 +72,26 @@ export default function AdminNotificationsPage() {
               const Icon = TYPE_ICONS[n.type] ?? Bell;
               const href = adminNotificationHref(n);
               const actionable = notificationIsActionable(n);
-              return (
-                <Link
-                  key={n.id}
-                  href={href}
-                  onClick={() => { if (!n.isRead) markNotificationRead(n.id); }}
-                  className={cn(
-                    'flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-muted/50',
-                    !n.isRead && 'bg-primary/[0.03]',
-                  )}
-                >
+              const support = n.relatedSupportRequestId
+                ? supportRequests.find((r) => r.id === n.relatedSupportRequestId)
+                : undefined;
+              const supportUser = support
+                ? users.find((u) => u.id === support.userId)
+                : undefined;
+              const waHref = support
+                ? playerWhatsAppUrl(
+                  support.contactPhone,
+                  `Hi ${supportUser?.name?.split(' ')[0] ?? 'there'}, this is Padel Nomads support regarding your ${SUPPORT_CATEGORY_LABELS[support.category].toLowerCase()} request.`,
+                )
+                : null;
+
+              const rowClass = cn(
+                'flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-muted/50',
+                !n.isRead && 'bg-primary/[0.03]',
+              );
+
+              const body = (
+                <>
                   <span
                     className={cn(
                       'mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl',
@@ -92,10 +108,52 @@ export default function AdminNotificationsPage() {
                     <span className="block text-sm text-muted-foreground">{n.message}</span>
                     <span className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/70">
                       {timeAgo(n.createdAt)}
-                      {actionable && <span className="text-primary/80">{actionLabel(n)}</span>}
+                      {actionable && !waHref && <span className="text-primary/80">{actionLabel(n)}</span>}
                     </span>
+                    {waHref && (
+                      <span className="mt-2 inline-flex">
+                        <a
+                          href={waHref}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={cn(
+                            'inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[0.8rem] font-medium transition-colors hover:bg-muted',
+                          )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!n.isRead) markNotificationRead(n.id);
+                          }}
+                        >
+                          <MessageCircle className="size-3.5" />
+                          WhatsApp {support?.contactPhone}
+                        </a>
+                      </span>
+                    )}
                   </span>
-                  {actionable && <ChevronRight className="mt-2 size-4 shrink-0 text-muted-foreground" />}
+                  {actionable && !waHref && <ChevronRight className="mt-2 size-4 shrink-0 text-muted-foreground" />}
+                </>
+              );
+
+              if (waHref) {
+                return (
+                  <div
+                    key={n.id}
+                    className={rowClass}
+                    onClick={() => { if (!n.isRead) markNotificationRead(n.id); }}
+                  >
+                    {body}
+                  </div>
+                );
+              }
+
+              return (
+                <Link
+                  key={n.id}
+                  href={href}
+                  onClick={() => { if (!n.isRead) markNotificationRead(n.id); }}
+                  className={rowClass}
+                >
+                  {body}
                 </Link>
               );
             })}

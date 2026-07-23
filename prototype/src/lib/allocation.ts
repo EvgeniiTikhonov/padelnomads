@@ -1,7 +1,7 @@
 import type { Game, GameParticipant, User } from '@/types';
 import { levelRank } from './eligibility';
 import { isFixedTeamFormat } from './format';
-import { FORMAT_CONFIG } from './gameFormats';
+import { formatConfig } from './gameFormats';
 
 // Court allocation ("initial distribution") for a game.
 //
@@ -144,7 +144,7 @@ export function teamLabel(playerIds: string[], users: User[]): string {
  * distribution, mirroring the King & Queen of the Court message format.
  */
 export function buildDistributionMessage(game: Game, ordered: OrderedTeams, users: User[]): string {
-  const cfg = FORMAT_CONFIG[game.format];
+  const cfg = formatConfig(game.format);
   const crown = game.format === 'king_queen_of_the_court' || game.format === 'king_of_the_court' ? '👑 ' : '🎾 ';
   const roundsLine = cfg.roundMinutes
     ? `${cfg.rounds.length} rounds — ${cfg.roundMinutes} min each`

@@ -12,17 +12,24 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PlayerAvatar } from '@/components/player-avatar';
 import { VerifiedBadge } from '@/components/badges';
 import { cn } from '@/lib/utils';
 import { useMockData } from '@/data/provider';
 import { leaderboardDetailed } from '@/lib/derive';
-import { LEVELS, LEVEL_LABELS, initials } from '@/lib/format';
-import type { Level } from '@/types';
+import { LEVELS, LEVEL_LABELS, LEADERBOARD_KIND_LABELS } from '@/lib/format';
+import type { LeaderboardKind, Level } from '@/types';
 
 type LevelFilter = 'all' | Level;
 type GenderFilter = 'all' | 'male' | 'female';
 type TimeFilter = 'all' | 'week' | 'month' | '3months' | 'year' | 'custom';
+
+const BOARD_OPTIONS: { key: LeaderboardKind; short: string }[] = [
+  { key: 'community', short: 'Community' },
+  { key: 'mens_c_plus', short: "Men's C+" },
+  { key: 'womens_c', short: "Women's C" },
+];
 
 const TIME_OPTIONS: { key: TimeFilter; label: string }[] = [
   { key: 'all', label: 'All time' },
@@ -41,6 +48,7 @@ function isoDaysAgo(days: number): string {
 
 export default function LeaderboardPage() {
   const { users, participants, games, currentUser } = useMockData();
+  const [boardKind, setBoardKind] = React.useState<LeaderboardKind>('community');
   // null = untouched → the trigger shows the filter's name as placeholder
   const [levelFilter, setLevelFilter] = React.useState<LevelFilter | null>(null);
   const [genderFilter, setGenderFilter] = React.useState<GenderFilter | null>(null);
@@ -62,12 +70,14 @@ export default function LeaderboardPage() {
     }
   }, [timeFilter, customFrom, customTo]);
   const timeFiltered = Boolean(range?.from || range?.to);
+  const leagueScoped = boardKind !== 'community';
+  const hideZeroGames = timeFiltered || leagueScoped;
 
-  const board = leaderboardDetailed(users, participants, games, range);
+  const board = leaderboardDetailed(users, participants, games, range, boardKind);
   const filtered = board
     .filter((r) => !levelFilter || levelFilter === 'all' || r.user.level === levelFilter)
     .filter((r) => !genderFilter || genderFilter === 'all' || r.user.gender === genderFilter)
-    .filter((r) => !timeFiltered || r.gamesPlayed > 0);
+    .filter((r) => !hideZeroGames || r.gamesPlayed > 0);
   const myRow = board.find((r) => r.user.id === currentUser.id);
 
   return (
@@ -75,14 +85,26 @@ export default function LeaderboardPage() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="font-heading text-2xl font-bold">Leaderboard</h1>
-          <p className="text-sm text-muted-foreground">Community ranking by points. Banned players are excluded.</p>
+          <p className="text-sm text-muted-foreground">
+            {boardKind === 'community'
+              ? 'Community ranking by points. Banned players are excluded.'
+              : `${LEADERBOARD_KIND_LABELS[boardKind]} — points from league games only.`}
+          </p>
         </div>
-        {myRow && (
+        {myRow && (!leagueScoped || myRow.gamesPlayed > 0) && (
           <Badge variant="secondary" className="h-7 gap-1.5 px-3">
             <Trophy className="size-3.5 text-amber-500" /> Your rank: #{myRow.rank}
           </Badge>
         )}
       </div>
+
+      <Tabs value={boardKind} onValueChange={(v) => setBoardKind(v as LeaderboardKind)}>
+        <TabsList className="flex h-auto flex-wrap">
+          {BOARD_OPTIONS.map((o) => (
+            <TabsTrigger key={o.key} value={o.key}>{o.short}</TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       {/* Filter row */}
       <div className="flex flex-wrap items-center gap-2">
@@ -156,11 +178,7 @@ export default function LeaderboardPage() {
                     </TableCell>
                     <TableCell>
                       <Link href={`/app/players/${r.user.id}`} className="flex items-center gap-2.5 hover:text-primary">
-                        <Avatar className="size-7">
-                          <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
-                            {initials(r.user.name)}
-                          </AvatarFallback>
-                        </Avatar>
+                        <PlayerAvatar user={r.user} className="size-7" fallbackClassName="text-[10px]" />
                         <span className="flex items-center gap-1.5 font-medium">
                           {r.user.name}
                           {r.user.id === currentUser.id && <span className="text-muted-foreground"> (you)</span>}
@@ -180,7 +198,12 @@ export default function LeaderboardPage() {
               {filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
-                    No players match these filters{timeFiltered ? ' — no completed games in this period' : ''}.
+                    No players match these filters
+                    {hideZeroGames
+                      ? leagueScoped
+                        ? ' — no completed league games yet'
+                        : ' — no completed games in this period'
+                      : ''}.
                   </TableCell>
                 </TableRow>
               )}
@@ -189,9 +212,12 @@ export default function LeaderboardPage() {
         </CardContent>
       </Card>
 
-      {timeFiltered && (
+      {(timeFiltered || leagueScoped) && (
         <p className="text-xs text-muted-foreground">
-          Points, games, and podiums reflect completed games in the selected period. Players without games in the period are hidden.
+          {leagueScoped
+            ? 'Points, games, and podiums reflect completed games tagged for this league.'
+            : 'Points, games, and podiums reflect completed games in the selected period.'}
+          {' '}Players without games{leagueScoped ? ' in this league' : ' in the period'} are hidden.
         </p>
       )}
     </div>

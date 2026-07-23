@@ -133,7 +133,7 @@ export default function WhatsAppPage() {
               <div className="space-y-1.5">
                 <Label>Variable preview</Label>
                 <Textarea
-                  value={preview || templates.find((t) => t.id === templateId)?.bodyText.replace('{{1}}', 'Maria').replace('{{2}}', 'Tuesday Americano').replace('{{3}}', 'tomorrow').replace('{{4}}', '19:00').replace('{{5}}', 'Padel Point') || ''}
+                  value={preview || templates.find((t) => t.id === templateId)?.bodyText.replace('{{1}}', 'Maria').replace('{{2}}', 'Tuesday Americano').replace('{{3}}', 'tomorrow').replace('{{4}}', '19:00').replace('{{5}}', 'Central Padel Al Quoz') || ''}
                   onChange={(e) => setPreview(e.target.value)}
                   rows={3}
                 />

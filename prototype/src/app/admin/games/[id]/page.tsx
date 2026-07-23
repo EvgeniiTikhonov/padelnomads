@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, CalendarDays, Clock, MapPin, Users, Play, Ban, Trash2,
-  UserPlus, Search, AlertTriangle, MessageCircle, Trophy, X, Info, ArrowUpDown,
+  UserPlus, Search, AlertTriangle, MessageCircle, Trophy, X, ArrowUpDown,
   ChevronRight, CheckCircle2, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PlayerAvatar } from '@/components/player-avatar';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -25,10 +25,13 @@ import {
 import { GameStatusBadge, KarmaTierBadge, ParticipantStatusBadge, VerifiedBadge } from '@/components/badges';
 import { GameResults } from '@/components/game-results';
 import { CourtDistribution } from '@/components/court-distribution';
+import { FormatLabel } from '@/components/format-icon';
 import { useMockData } from '@/data/provider';
 import { spotsTaken, maxFixedTeams } from '@/lib/derive';
-import { FORMAT_LABELS, LEVEL_LABELS, formatDateLong, initials, isFixedTeamFormat } from '@/lib/format';
-import { FORMAT_CONFIG } from '@/lib/gameFormats';
+import { waitlistOrdered, waitlistUnitsOrdered } from '@/lib/waitlist';
+import { LEVEL_LABELS, formatDateLong, isFixedTeamFormat } from '@/lib/format';
+import { TEAM_ENTRY_LABELS } from '@/lib/teamPriority';
+import { formatConfig } from '@/lib/gameFormats';
 import { computeStandings, matchDecided } from '@/lib/scoring';
 import type { Game, GameMatch, GameParticipant, GameTeam, User } from '@/types';
 
@@ -61,13 +64,17 @@ export default function AdminGameDetailPage() {
     );
   }
 
-  const cfg = FORMAT_CONFIG[game.format];
+  const cfg = formatConfig(game.format);
   const roster = participants
     .filter((p) => p.gameId === game.id)
     .sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
-  const activeRoster = roster.filter((p) => !['cancelled'].includes(p.status));
+  const activeRoster = roster.filter((p) => !['cancelled', 'waitlisted'].includes(p.status));
+  const waitlist = waitlistOrdered(participants, users, game.id);
   const taken = spotsTaken(participants, game.id, externalPartnerInvites, game.format);
   const isFixedTeam = isFixedTeamFormat(game.format);
+  const waitlistUnits = isFixedTeam
+    ? waitlistUnitsOrdered(participants, users, game.id)
+    : null;
   const teamsTaken = isFixedTeam ? taken / 2 : 0;
   const teamsMax = isFixedTeam ? maxFixedTeams(game.capacity) : 0;
   const userFor = (userId: string) => users.find((u) => u.id === userId);
@@ -121,7 +128,7 @@ export default function AdminGameDetailPage() {
             {game.title} <GameStatusBadge status={game.status} />
           </h1>
           <p className="text-sm text-muted-foreground">
-            {FORMAT_LABELS[game.format]} · {formatDateLong(game.date)} · {game.startTime}–{game.endTime}
+            <FormatLabel format={game.format} className="inline" /> · {formatDateLong(game.date)} · {game.startTime}–{game.endTime}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -230,8 +237,8 @@ export default function AdminGameDetailPage() {
           <CardHeader className="flex-row items-center justify-between p-4 pb-0">
             <CardTitle className="font-heading text-base">
               {isFixedTeam
-                ? `Teams (${teamsTaken}/${teamsMax}) · ${activeRoster.filter((p) => p.status !== 'waitlisted').length} players`
-                : `Players (${activeRoster.filter((p) => p.status !== 'waitlisted').length}/${game.capacity})`}
+                ? `Teams (${teamsTaken}/${teamsMax}) · ${activeRoster.length} players`
+                : `Players (${activeRoster.length}/${game.capacity})`}
             </CardTitle>
             {game.status !== 'completed' && game.status !== 'cancelled' && (
               <Button size="sm" onClick={() => setAddOpen(true)}>
@@ -277,6 +284,78 @@ export default function AdminGameDetailPage() {
         </Card>
       )}
 
+      {showRoster && (waitlistUnits ? waitlistUnits.length > 0 : waitlist.length > 0) && (
+        <Card className="rounded-2xl py-0 shadow-sm">
+          <CardHeader className="p-4 pb-0">
+            <CardTitle className="font-heading text-base">
+              Waitlist ({waitlistUnits ? waitlistUnits.length : waitlist.length}
+              {waitlistUnits ? ' units' : ''})
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {isFixedTeam
+                ? 'Priority: full pairs → partner pending → solos, then karma — #1 is promoted first when a team slot opens.'
+                : 'Karma priority — #1 is promoted first when a main-list spot opens.'}
+            </p>
+          </CardHeader>
+          <CardContent className="divide-y p-4 pt-2">
+            {waitlistUnits
+              ? waitlistUnits.map((unit, i) => {
+                  const members = unit.participants
+                    .map((p) => ({ p, u: userFor(p.userId) }))
+                    .filter((x): x is { p: typeof unit.participants[0]; u: NonNullable<ReturnType<typeof userFor>> } => Boolean(x.u));
+                  if (members.length === 0) return null;
+                  return (
+                    <div key={unit.participants.map((p) => p.id).join('-')} className="flex items-center gap-3 py-2.5">
+                      <span className="w-5 text-center text-xs font-semibold text-muted-foreground">#{i + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {members.map((m) => m.u.name).join(' + ')}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {TEAM_ENTRY_LABELS[unit.entryKind]} · karma {unit.karma}
+                        </p>
+                      </div>
+                      <Badge variant="secondary">{TEAM_ENTRY_LABELS[unit.entryKind]}</Badge>
+                      {members.map(({ p, u }) => (
+                        <Button
+                          key={p.id}
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive"
+                          onClick={() => removePlayerFromGame(game.id, u.id)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      ))}
+                    </div>
+                  );
+                })
+              : waitlist.map((p, i) => {
+                  const u = userFor(p.userId);
+                  if (!u) return null;
+                  return (
+                    <div key={p.id} className="flex items-center gap-3 py-2.5">
+                      <span className="w-5 text-center text-xs font-semibold text-muted-foreground">#{i + 1}</span>
+                      <PlayerAvatar
+                        user={u}
+                        className="size-8"
+                        fallbackClassName="bg-muted text-muted-foreground text-xs"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{u.name}</p>
+                        <p className="text-xs text-muted-foreground">karma {u.karmaBalance} · {u.karmaTier}</p>
+                      </div>
+                      <KarmaTierBadge tier={u.karmaTier} />
+                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => removePlayerFromGame(game.id, u.id)}>
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Add player dialog */}
       <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) setQuery(''); }}>
         <DialogContent className="sm:max-w-lg">
@@ -294,9 +373,7 @@ export default function AdminGameDetailPage() {
           <div className="max-h-72 divide-y overflow-y-auto">
             {candidates.map((u) => (
               <div key={u.id} className="flex items-center gap-3 py-2.5">
-                <Avatar className="size-8">
-                  <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">{initials(u.name)}</AvatarFallback>
-                </Avatar>
+                <PlayerAvatar user={u} className="size-8" fallbackClassName="text-xs" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{u.name}</p>
                   <p className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -368,7 +445,7 @@ export default function AdminGameDetailPage() {
 }
 
 function FormatRulesCard({ format }: { format: Game['format'] }) {
-  const cfg = FORMAT_CONFIG[format];
+  const cfg = formatConfig(format);
   const roundsLabel = cfg.roundMinutes
     ? `${cfg.rounds.length} rounds × ${cfg.roundMinutes} min`
     : `${cfg.rounds.length} stages`;
@@ -376,7 +453,7 @@ function FormatRulesCard({ format }: { format: Game['format'] }) {
     <Card className="rounded-2xl border-primary/20 bg-primary/[0.03] py-0 shadow-sm">
       <CardContent className="space-y-2 p-4 text-sm">
         <p className="flex items-center gap-1.5 font-heading text-base font-semibold">
-          <Info className="size-4 text-primary" /> {FORMAT_LABELS[format]} — format rules
+          <FormatLabel format={format} /> — format rules
         </p>
         <div className="flex flex-wrap gap-2">
           <Badge variant="outline">{cfg.warmupMinutes} min warm-up</Badge>
@@ -418,7 +495,7 @@ function ScoringStep({
   onNextRound: (fromRound: number) => void;
   onCollect: () => void;
 }) {
-  const cfg = FORMAT_CONFIG[game.format];
+  const cfg = formatConfig(game.format);
   const standings = computeStandings(game, teams, matches);
   const teamName = (tid: string) => teams.find((t) => t.id === tid)?.name ?? 'Team';
   const playersOf = (tid: string) =>
@@ -570,9 +647,7 @@ function ParticipantRow({
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
-      <Avatar className="size-8">
-        <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">{initials(u.name)}</AvatarFallback>
-      </Avatar>
+      <PlayerAvatar user={u} className="size-8" fallbackClassName="text-xs" />
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
           {u.name}

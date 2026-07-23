@@ -39,7 +39,9 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium">Waitlist</p>
-              <p className="text-xs text-muted-foreground">Show waitlist when full. Auto-promotion is future scope.</p>
+              <p className="text-xs text-muted-foreground">
+                When a game is full, joiners go on the waitlist. Team formats prioritize full pairs, then partner-pending (name by 8:00 PM), then solos — then karma within each tier.
+              </p>
             </div>
             <Switch checked={waitlist} onCheckedChange={(c) => setWaitlist(c === true)} />
           </div>

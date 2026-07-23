@@ -29,6 +29,8 @@ export interface User {
   preferredPlayTime?: PlayTimePref[];  // multi-select: morning / afternoon / evening
   preferredClubs?: string[];           // multi-select from PREFERRED_CLUBS
   gender?: Gender;
+  /** Profile / roster photo URL (local path or remote). */
+  avatarUrl?: string;
   whatsappOptIn: boolean; whatsappOptInAt?: string;
   whatsappMarketingOptIn: boolean; whatsappMarketingOptInAt?: string;
   whatsappOptOutAt?: string;
@@ -77,11 +79,17 @@ export type GameFormat =
   | 'king_of_the_court' | 'fixed_pairs' | 'king_queen_of_the_court'
   | 'team_mexicano' | 'social_shuffle' | 'mini_tournament';
 export type GameStatus = 'upcoming' | 'live' | 'completed' | 'cancelled';
+/** Optional league affiliation — drives switchable leaderboards. Untagged games count only toward Community. */
+export type GameLeague = 'mens_c_plus' | 'womens_c';
+/** Switchable leaderboard scopes on the player leaderboard page. */
+export type LeaderboardKind = 'community' | GameLeague;
 export interface Game {
   id: string; title: string; format: GameFormat; venue: string;
   date: string; startTime: string; endTime: string;
   courts: number; capacity: number; level: Level | 'mixed';
-  genderRestriction?: 'male' | 'female' | 'mixed';
+  genderRestriction?: 'male' | 'female' | 'mixed' | 'mixed_pairs';
+  /** When set, results also feed that league’s leaderboard (Community always includes every game). */
+  league?: GameLeague;
   price?: number; description?: string;
   status: GameStatus;
   deleted?: boolean;                // soft delete (prototype default)
@@ -112,6 +120,15 @@ export interface GameParticipant {
   partnerUserId?: string;
   /** Fixed-team formats: pending partner invite from this user id. */
   partnerInviteFrom?: string;
+  /**
+   * Fixed-team registration priority:
+   * full_pair (both names) > partner_pending (name by 8pm) > solo.
+   */
+  teamEntryKind?: 'full_pair' | 'partner_pending' | 'solo';
+  /** Declared partner display name (off-app or after fulfilling partner_pending). */
+  partnerName?: string;
+  /** When partner_pending must provide partnerName (typically 20:00 same day). */
+  partnerNameDueAt?: string;
   attendance?: 'on_time' | 'late' | 'no_show';
   paymentStatus?: 'pending' | 'paid' | 'unpaid' | 'waived';
   position?: number; pointsAwarded?: number;
@@ -183,6 +200,52 @@ export interface Offer {
   updatedAt: string;
 }
 
+/** Amenities a club can advertise. */
+export const CLUB_AMENITIES = [
+  'cold_plunge',
+  'sauna',
+  'yoga_room',
+  'gym',
+  'recovery_center',
+  'cafeteria',
+  'padel_equipment_shop',
+] as const;
+export type ClubAmenity = (typeof CLUB_AMENITIES)[number];
+
+/** Partner / host club where games are played. */
+export interface Club {
+  id: string;
+  name: string;
+  /** Short blurb shown to players. */
+  description: string;
+  /** Google Maps place / directions URL. */
+  mapsUrl?: string;
+  /** Official Instagram profile URL. */
+  instagramUrl?: string;
+  /** Club photo (URL or data-URI from admin upload). */
+  imageUrl?: string;
+  courtCount: number;
+  /** Labels for each court, length should match courtCount. */
+  courtNames: string[];
+  amenities: ClubAmenity[];
+  status: 'active' | 'inactive';
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Player support ticket categories (temporary: admin follows up manually). */
+export type SupportRequestCategory = 'payment' | 'booking' | 'account' | 'other';
+
+export interface SupportRequest {
+  id: string;
+  userId: string;
+  category: SupportRequestCategory;
+  issue: string;
+  contactPhone: string;
+  status: 'open' | 'resolved';
+  createdAt: string;
+}
+
 // PRD §15.8
 export interface AppNotification {
   id: string;
@@ -199,6 +262,8 @@ export interface AppNotification {
   relatedOfferId?: string;
   /** Tap-through to an application (admin). */
   relatedApplicationId?: string;
+  /** Tap-through / resolve a support ticket (admin). */
+  relatedSupportRequestId?: string;
   /** Who this notification is for. Defaults to player. */
   audience?: 'player' | 'admin';
   createdAt: string;

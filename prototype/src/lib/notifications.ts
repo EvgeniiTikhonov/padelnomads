@@ -4,6 +4,7 @@ type Related = {
   gameId?: string;
   offerId?: string;
   applicationId?: string;
+  supportRequestId?: string;
 };
 
 /** Deep link for a player notification. */
@@ -20,12 +21,15 @@ export function notificationHref(n: AppNotification): string {
 export function adminNotificationHref(n: AppNotification): string {
   if (n.relatedApplicationId) return `/admin/applications?application=${n.relatedApplicationId}`;
   if (n.relatedGameId) return `/admin/games/${n.relatedGameId}`;
+  if (n.relatedSupportRequestId) {
+    return `/admin/notifications?support=${n.relatedSupportRequestId}`;
+  }
   return '/admin/notifications';
 }
 
 export function notificationIsActionable(n: AppNotification): boolean {
   if (n.audience === 'admin') {
-    return Boolean(n.relatedApplicationId || n.relatedGameId);
+    return Boolean(n.relatedApplicationId || n.relatedGameId || n.relatedSupportRequestId);
   }
   return Boolean(
     n.relatedGameId
@@ -41,5 +45,6 @@ export function relatedFromNotification(n: AppNotification): Related {
     gameId: n.relatedGameId,
     offerId: n.relatedOfferId,
     applicationId: n.relatedApplicationId,
+    supportRequestId: n.relatedSupportRequestId,
   };
 }

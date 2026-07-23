@@ -16,10 +16,10 @@ import {
 } from '@/components/ui/select';
 import { useMockData } from '@/data/provider';
 import { visibleGames } from '@/lib/derive';
-import { FORMAT_LABELS, LEVELS, LEVEL_LABELS, formatDate } from '@/lib/format';
+import { FORMAT_LABELS, LEVELS, LEVEL_LABELS, formatDate, GENDER_RESTRICTION_LABELS, CLUB_AMENITY_LABELS } from '@/lib/format';
+import { FORMAT_GENDER_LABELS, type FormatGenderMode } from '@/lib/gameFormats';
+import { FormatIcon } from '@/components/format-icon';
 import type { Game, GameFormat, Level } from '@/types';
-
-const VENUES = ['Padel Point, Al Quoz', 'Matcha Club, Al Quoz', 'The Padel Lab, JLT', 'Real Padel Club, Al Barsha', 'ISD Sports City'];
 
 /** Shift a YYYY-MM-DD date by N days (week-over-week default = +7). */
 function shiftDate(iso: string, days: number): string {
@@ -42,7 +42,7 @@ interface GameDraft {
   courts: number;
   capacity: number;
   level: Game['level'] | null;
-  genderRestriction: NonNullable<Game['genderRestriction']> | null;
+  genderRestriction: FormatGenderMode | null;
   price: string;
   description: string;
   rem24: boolean;
@@ -97,10 +97,20 @@ export default function CreateGamePage() {
 }
 
 function CreateGameForm() {
-  const { createGame, games } = useMockData();
+  const { createGame, games, formatDefinitions, clubs } = useMockData();
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromId = searchParams.get('from');
+
+  const activeFormats = React.useMemo(
+    () => formatDefinitions.filter((d) => d.active),
+    [formatDefinitions],
+  );
+
+  const activeClubs = React.useMemo(
+    () => clubs.filter((c) => c.status === 'active').sort((a, b) => a.name.localeCompare(b.name)),
+    [clubs],
+  );
 
   const templates = React.useMemo(
     () =>
@@ -137,10 +147,32 @@ function CreateGameForm() {
     });
   };
 
+  const selectedFormatDef = draft.format
+    ? formatDefinitions.find((d) => d.id === draft.format)
+    : undefined;
+  const genderOptions = selectedFormatDef?.allowedGenderModes ?? (['mixed'] as FormatGenderMode[]);
+
+  // Keep gender selection valid for the chosen format.
+  if (
+    draft.genderRestriction &&
+    genderOptions.length > 0 &&
+    !genderOptions.includes(draft.genderRestriction)
+  ) {
+    setDraft((d) => ({
+      ...d,
+      genderRestriction: selectedFormatDef?.defaultGenderMode ?? genderOptions[0],
+    }));
+  }
+
   const venueOptions = React.useMemo(() => {
-    if (draft.venue && !VENUES.includes(draft.venue)) return [draft.venue, ...VENUES];
-    return VENUES;
-  }, [draft.venue]);
+    const names = activeClubs.map((c) => c.name);
+    if (draft.venue && !names.includes(draft.venue)) return [draft.venue, ...names];
+    return names;
+  }, [activeClubs, draft.venue]);
+
+  const selectedClub = draft.venue
+    ? clubs.find((c) => c.name === draft.venue)
+    : undefined;
 
   const valid =
     draft.title.trim() &&
@@ -228,23 +260,66 @@ function CreateGameForm() {
               </div>
               <div className="space-y-2">
                 <Label>Format *</Label>
-                <Select value={draft.format} onValueChange={(v) => patch('format', v as GameFormat)}>
+                <Select
+                  value={draft.format}
+                  onValueChange={(v) => {
+                    const fmt = v as GameFormat;
+                    const def = formatDefinitions.find((d) => d.id === fmt);
+                    setDraft((d) => ({
+                      ...d,
+                      format: fmt,
+                      genderRestriction: def?.defaultGenderMode ?? d.genderRestriction,
+                    }));
+                  }}
+                >
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select format" /></SelectTrigger>
                   <SelectContent>
-                    {(Object.keys(FORMAT_LABELS) as GameFormat[]).map((f) => (
-                      <SelectItem key={f} value={f}>{FORMAT_LABELS[f]}</SelectItem>
+                    {activeFormats.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        <span className="inline-flex items-center gap-2">
+                          <FormatIcon format={f.id} className="size-3.5" />
+                          {f.name}
+                        </span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {selectedFormatDef && (
+                  <p className="text-xs text-muted-foreground">
+                    {selectedFormatDef.entryMode === 'team' ? 'Team entry' : 'Solo entry'}
+                    {' · '}
+                    {selectedFormatDef.roundMinutes != null
+                      ? `${selectedFormatDef.roundCount} × ${selectedFormatDef.roundMinutes} min`
+                      : `${selectedFormatDef.roundCount} stages`}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
-                <Label>Venue *</Label>
-                <Select value={draft.venue} onValueChange={(v) => patch('venue', v as string)}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Select venue" /></SelectTrigger>
+                <Label>Venue / club *</Label>
+                <Select
+                  value={draft.venue}
+                  onValueChange={(v) => {
+                    const club = clubs.find((c) => c.name === v);
+                    setDraft((d) => ({
+                      ...d,
+                      venue: v as string,
+                      courts: club?.courtCount ?? d.courts,
+                    }));
+                  }}
+                >
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Select club" /></SelectTrigger>
                   <SelectContent>
                     {venueOptions.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {selectedClub && (
+                  <p className="text-xs text-muted-foreground">
+                    {selectedClub.courtCount} courts
+                    {selectedClub.amenities.length > 0
+                      ? ` · ${selectedClub.amenities.slice(0, 3).map((a) => CLUB_AMENITY_LABELS[a]).join(', ')}${selectedClub.amenities.length > 3 ? '…' : ''}`
+                      : ''}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="date">Date *</Label>
@@ -285,13 +360,15 @@ function CreateGameForm() {
                 <Label>Gender restriction</Label>
                 <Select
                   value={draft.genderRestriction}
-                  onValueChange={(v) => patch('genderRestriction', v as NonNullable<Game['genderRestriction']>)}
+                  onValueChange={(v) => patch('genderRestriction', v as FormatGenderMode)}
                 >
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="mixed">Mixed (no restriction)</SelectItem>
-                    <SelectItem value="male">Male only</SelectItem>
-                    <SelectItem value="female">Female only</SelectItem>
+                    {genderOptions.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {FORMAT_GENDER_LABELS[g] ?? GENDER_RESTRICTION_LABELS[g]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

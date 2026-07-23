@@ -16,11 +16,16 @@ export function canJoinByLevel(player: User, game: Game): boolean {
 
 /**
  * Men-only / ladies-only games block the opposite gender.
- * Mixed (or unset) is open. Players without a gender can only join mixed.
+ * Mixed (open) and unset are open. Mixed-pairs (man+woman teams) still needs
+ * a binary gender on the player so they can form a valid pair.
+ * Players without a gender can only join open mixed.
  */
 export function canJoinByGender(player: User, game: Game): boolean {
   const restriction = game.genderRestriction;
   if (!restriction || restriction === 'mixed') return true;
+  if (restriction === 'mixed_pairs') {
+    return isBinaryGender(player.gender);
+  }
   if (!player.gender || player.gender === 'prefer_not_to_say' || player.gender === 'non_binary') {
     return false;
   }
@@ -28,12 +33,16 @@ export function canJoinByGender(player: User, game: Game): boolean {
 }
 
 /**
- * Mixed King & Queen needs one man + one woman per team.
- * Ladies-only / men-only K&Q variants do not use this rule.
+ * Mixed-only formats need one man + one woman per team.
+ * Driven by the game's genderRestriction (or legacy King & Queen default).
  */
 export function requiresMixedGenderPair(game: Game): boolean {
-  if (game.format !== 'king_queen_of_the_court') return false;
-  return !game.genderRestriction || game.genderRestriction === 'mixed';
+  if (game.genderRestriction === 'mixed_pairs') return true;
+  // Legacy: King & Queen without an explicit restriction is mixed-pairs.
+  if (game.format === 'king_queen_of_the_court' && (!game.genderRestriction || game.genderRestriction === 'mixed')) {
+    return true;
+  }
+  return false;
 }
 
 export function isBinaryGender(g?: Gender): g is 'male' | 'female' {
@@ -69,7 +78,7 @@ export function gameJoinEligibility(player: User, game: Game): EligibilityBlock 
   if (requiresMixedGenderPair(game) && !isBinaryGender(player.gender)) {
     return {
       ok: false,
-      reason: 'King & Queen needs a binary gender on your profile (male or female) to form mixed teams.',
+      reason: 'This game needs a binary gender on your profile (male or female) to form mixed teams.',
     };
   }
   return { ok: true };
@@ -90,7 +99,7 @@ export function partnerPairEligibility(
   if (requiresMixedGenderPair(game) && !isValidMixedGenderPair(player.gender, partner.gender)) {
     return {
       ok: false,
-      reason: 'King & Queen teams must be one man and one woman.',
+      reason: 'Teams must be one man and one woman for this game.',
     };
   }
   return { ok: true };

@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { GameStatusBadge } from '@/components/badges';
+import { FormatLabel } from '@/components/format-icon';
 import { useMockData } from '@/data/provider';
 import { spotsTaken, visibleGames } from '@/lib/derive';
-import { FORMAT_LABELS, formatDate } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 
 export default function AdminGamesPage() {
   const { games, participants, externalPartnerInvites } = useMockData();
@@ -60,7 +61,8 @@ export default function AdminGamesPage() {
                       {g.title} <GameStatusBadge status={g.status} />
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {FORMAT_LABELS[g.format]} · {formatDate(g.date)} · {g.startTime}–{g.endTime} · {g.venue}
+                      <FormatLabel format={g.format} className="text-xs" iconClassName="size-3" />
+                      {' · '}{formatDate(g.date)} · {g.startTime}–{g.endTime} · {g.venue}
                     </p>
                   </div>
                   <Badge variant="outline" className="gap-1">

@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/select';
 import { useMockData } from '@/data/provider';
 import { spotsTaken, upcomingGamesNextTwoWeeks, maxFixedTeams } from '@/lib/derive';
-import { LEVELS, LEVEL_LABELS, isFixedTeamFormat } from '@/lib/format';
+import { LEVELS, LEVEL_LABELS, isFixedTeamFormat, FORMAT_LABELS } from '@/lib/format';
+import { FormatIcon } from '@/components/format-icon';
 import type { Game, GameFormat, Level } from '@/types';
 
 /* Brand tokens from the landing design system */
@@ -387,7 +388,17 @@ function EventCard({ game, index }: { game: Game; index: number }) {
                 <span className="flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1 text-xs text-white/70 backdrop-blur-sm">
                   <Clock className="size-3" /> {startsInLabel(game)}
                 </span>
+                <span className="flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1 text-xs text-white/80 backdrop-blur-sm">
+                  <FormatIcon format={game.format} className="size-3" />
+                  {FORMAT_LABELS[game.format]}
+                </span>
               </>
+            )}
+            {(live || finished) && (
+              <span className="flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1 text-xs text-white/80 backdrop-blur-sm">
+                <FormatIcon format={game.format} className="size-3" />
+                {FORMAT_LABELS[game.format]}
+              </span>
             )}
           </div>
           <button

@@ -8,14 +8,18 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PlayerAvatar } from '@/components/player-avatar';
 import { GameStatusBadge, ParticipantStatusBadge } from '@/components/badges';
 import { GameResults } from '@/components/game-results';
 import { FixedTeamRoster } from '@/components/fixed-team-roster';
 import { ParticipationActions } from '@/components/participation-actions';
+import { ClubLink } from '@/components/club-link';
+import { FormatLabel } from '@/components/format-icon';
 import { useMockData } from '@/data/provider';
 import { spotsTaken, maxFixedTeams } from '@/lib/derive';
-import { FORMAT_LABELS, LEVEL_LABELS, formatDateLong, initials, isFixedTeamFormat } from '@/lib/format';
+import { waitlistOrdered, waitlistUnitsOrdered } from '@/lib/waitlist';
+import { LEVEL_LABELS, formatDateLong, isFixedTeamFormat } from '@/lib/format';
+import { TEAM_ENTRY_LABELS } from '@/lib/teamPriority';
 import { courtLabel, teamLabel } from '@/lib/allocation';
 import type { GameTeam, User } from '@/types';
 
@@ -38,7 +42,10 @@ export default function GameDetailPage() {
 
   const roster = participants.filter((p) => p.gameId === game.id);
   const active = roster.filter((p) => !['cancelled', 'waitlisted'].includes(p.status));
-  const waitlist = roster.filter((p) => p.status === 'waitlisted');
+  const waitlist = waitlistOrdered(participants, users, game.id);
+  const waitlistUnits = isFixedTeamFormat(game.format)
+    ? waitlistUnitsOrdered(participants, users, game.id)
+    : null;
   const taken = spotsTaken(participants, game.id, externalPartnerInvites, game.format);
   const available = Math.max(0, game.capacity - taken);
   const mine = roster.find((p) => p.userId === currentUser.id && p.status !== 'cancelled');
@@ -62,7 +69,9 @@ export default function GameDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="font-heading text-2xl font-bold">{game.title}</h1>
-          <p className="text-sm text-muted-foreground">{FORMAT_LABELS[game.format]}</p>
+          <p className="text-sm text-muted-foreground">
+            <FormatLabel format={game.format} />
+          </p>
         </div>
         <GameStatusBadge status={game.status} />
       </div>
@@ -76,7 +85,7 @@ export default function GameDetailPage() {
             <Clock className="size-4 text-primary" /> {game.startTime}–{game.endTime}
           </span>
           <span className="flex items-center gap-2 text-sm">
-            <MapPin className="size-4 text-primary" /> {game.venue}
+            <MapPin className="size-4 text-primary" /> <ClubLink name={game.venue} />
           </span>
           <span className="flex items-center gap-2 text-sm">
             <LayoutGrid className="size-4 text-primary" /> {game.courts} court{game.courts > 1 ? 's' : ''}
@@ -144,11 +153,7 @@ export default function GameDetailPage() {
               return (
                 <div key={p.id} className="flex items-center gap-3 py-2.5">
                   <Link href={`/app/players/${u.id}`} className="flex min-w-0 flex-1 items-center gap-3 hover:text-primary">
-                    <Avatar className="size-8">
-                      <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-                        {initials(u.name)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <PlayerAvatar user={u} className="size-8" fallbackClassName="text-xs" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
                         {u.name}{u.id === currentUser.id && <span className="text-muted-foreground"> (you)</span>}
@@ -164,29 +169,70 @@ export default function GameDetailPage() {
         </Card>
       )}
 
-      {waitlist.length > 0 && (
+      {(waitlistUnits ? waitlistUnits.length > 0 : waitlist.length > 0) && (
         <Card className="rounded-2xl py-0 shadow-sm">
           <CardHeader className="p-4 pb-0">
-            <CardTitle className="font-heading text-base">Waitlist ({waitlist.length})</CardTitle>
+            <CardTitle className="font-heading text-base">
+              Waitlist ({waitlistUnits ? waitlistUnits.length : waitlist.length}
+              {waitlistUnits ? ' teams/solos' : ''})
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {isFixedTeam
+                ? 'Priority: full pairs → partner pending → solos, then karma (one team slot at a time).'
+                : 'Ordered by karma — higher balance is promoted first.'}
+            </p>
           </CardHeader>
           <CardContent className="divide-y p-4 pt-2">
-            {waitlist.map((p) => {
-              const u = userFor(p.userId);
-              if (!u) return null;
-              return (
-                <div key={p.id} className="flex items-center gap-3 py-2.5">
-                  <Avatar className="size-8">
-                    <AvatarFallback className="bg-muted text-xs font-semibold text-muted-foreground">
-                      {initials(u.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <Link href={`/app/players/${u.id}`} className="flex-1 truncate text-sm font-medium hover:text-primary">
-                    {u.name}
-                  </Link>
-                  <ParticipantStatusBadge status={p.status} />
-                </div>
-              );
-            })}
+            {waitlistUnits
+              ? waitlistUnits.map((unit, i) => {
+                  const members = unit.participants
+                    .map((p) => userFor(p.userId))
+                    .filter((u): u is NonNullable<typeof u> => Boolean(u));
+                  if (members.length === 0) return null;
+                  return (
+                    <div key={unit.participants.map((p) => p.id).join('-')} className="flex items-center gap-3 py-2.5">
+                      <span className="w-5 text-center text-xs font-semibold text-muted-foreground">#{i + 1}</span>
+                      <div className="flex -space-x-1.5">
+                        {members.map((u) => (
+                          <PlayerAvatar
+                            key={u.id}
+                            user={u}
+                            className="size-8 border-2 border-background"
+                            fallbackClassName="bg-muted text-muted-foreground text-xs"
+                          />
+                        ))}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {members.map((u) => u.name).join(' + ')}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {TEAM_ENTRY_LABELS[unit.entryKind]} · karma {unit.karma}
+                        </p>
+                      </div>
+                      <Badge variant="secondary">{TEAM_ENTRY_LABELS[unit.entryKind]}</Badge>
+                    </div>
+                  );
+                })
+              : waitlist.map((p, i) => {
+                  const u = userFor(p.userId);
+                  if (!u) return null;
+                  return (
+                    <div key={p.id} className="flex items-center gap-3 py-2.5">
+                      <span className="w-5 text-center text-xs font-semibold text-muted-foreground">#{i + 1}</span>
+                      <PlayerAvatar
+                        user={u}
+                        className="size-8"
+                        fallbackClassName="bg-muted text-muted-foreground text-xs"
+                      />
+                      <Link href={`/app/players/${u.id}`} className="min-w-0 flex-1 truncate text-sm font-medium hover:text-primary">
+                        {u.name}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">karma {u.karmaBalance}</span>
+                      <ParticipantStatusBadge status={p.status} />
+                    </div>
+                  );
+                })}
           </CardContent>
         </Card>
       )}

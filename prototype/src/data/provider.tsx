@@ -3,24 +3,38 @@
 import * as React from 'react';
 import { toast } from 'sonner';
 import type {
-  User, PlayerPhoneNumber, Application, Game, GameParticipant, GameTeam, GameMatch, Offer,
+  User, PlayerPhoneNumber, Application, Game, GameParticipant, GameTeam, GameMatch, Offer, Club,
   AppNotification, KarmaEvent, MessageTemplate, OutboundMessage, InboundMessage,
   ImportBatch, ImportRecord, PlayerMergeLog, BanRecord, RatingAdjustment, ActivityLog,
   ExternalPartnerInvite, MockSession, ViewRole, KarmaEventType, GameStatus, ParticipantStatus, Level,
+  GameFormat, SupportRequest, SupportRequestCategory,
 } from '@/types';
 import { computeStandings, generateNextRoundMatches } from '@/lib/scoring';
 import {
   seedUsers, seedPhones, seedApplications, seedGames, seedParticipants, seedGameTeams, seedGameMatches,
-  seedOffers, seedNotifications, seedKarmaEvents, seedTemplates, seedOutbound,
+  seedOffers, seedClubs, seedNotifications, seedSupportRequests, seedKarmaEvents, seedTemplates, seedOutbound,
   seedInbound, seedImportBatches, seedImportRecords, seedDuplicates,
   seedBanRecords, seedRatingAdjustments, seedActivityLogs, seedMergeLogs,
   type DuplicateCandidate,
 } from './mock';
-import { karmaTierFor, KARMA_EVENT_LABELS, isFixedTeamFormat, EXTERNAL_PARTNER_HOLD_HOURS } from '@/lib/format';
-import { spotsTaken, fixedTeamsTaken, maxFixedTeams, isGameFull } from '@/lib/derive';
+import { karmaTierFor, KARMA_EVENT_LABELS, SUPPORT_CATEGORY_LABELS, isFixedTeamFormat, EXTERNAL_PARTNER_HOLD_HOURS } from '@/lib/format';
+import { spotsTaken, fixedTeamsTaken, maxFixedTeams, isGameFull, clampFixedTeamRosters } from '@/lib/derive';
+import {
+  nextWaitlistPromotions, promoteWaitlistParticipants, waitlistOrdered, waitlistPosition,
+} from '@/lib/waitlist';
+import {
+  enforcePartnerNameDeadlines,
+  partnerNameDueAtFrom,
+  type TeamEntryKind,
+} from '@/lib/teamPriority';
 import { gameJoinEligibility, partnerPairEligibility, requiresMixedGenderPair, isBinaryGender } from '@/lib/eligibility';
 import { buildOrderedTeams, courtForIndex, teamLabel, type OrderedTeams, type StrengthContext } from '@/lib/allocation';
 import { playerMatchRecords, winLossStats } from '@/lib/playerStats';
+import {
+  SEED_FORMAT_DEFINITIONS,
+  syncRuntimeFormatConfig,
+  type FormatDefinition,
+} from '@/lib/gameFormats';
 
 // Prototype flag (see NOTES.md / PRD §20 open questions)
 export const ALLOW_SELF_REGISTER = true;
@@ -34,7 +48,9 @@ interface StoreState {
   teams: GameTeam[];
   matches: GameMatch[];
   offers: Offer[];
+  clubs: Club[];
   notifications: AppNotification[];
+  supportRequests: SupportRequest[];
   karmaEvents: KarmaEvent[];
   templates: MessageTemplate[];
   outbound: OutboundMessage[];
@@ -49,6 +65,8 @@ interface StoreState {
   externalPartnerInvites: ExternalPartnerInvite[];
   /** Learned per-player strength bias from past manual court adjustments. */
   allocationBiases: Record<string, number>;
+  /** Admin-editable game format catalogue. */
+  formatDefinitions: FormatDefinition[];
   session: MockSession;
 }
 
@@ -110,7 +128,21 @@ interface MockDataContextValue extends StoreState {
   generateNextRound: (gameId: string, fromRound: number) => void;
   collectScores: (gameId: string) => void;
   // player participation
-  registerForGame: (gameId: string, userId: string, opts?: { lookingForPartner?: boolean }) => void;
+  registerForGame: (
+    gameId: string,
+    userId: string,
+    opts?: {
+      lookingForPartner?: boolean;
+      /** Join as a linked team with this partner (main list or waitlist). */
+      withPartnerUserId?: string;
+      /** Full pair: partner's name provided at registration (off-app). */
+      partnerName?: string;
+      /** Player + Partner: will send partner name by 8:00 PM same day. */
+      partnerPending?: boolean;
+    },
+  ) => void;
+  /** Fulfill partner_pending by providing the partner's name before the deadline. */
+  submitPartnerName: (gameId: string, userId: string, partnerName: string) => void;
   confirmParticipation: (gameId: string, userId: string) => void;
   /** Player taps “Let’s go” on a confirmed game. */
   markLetsGo: (gameId: string, userId: string) => void;
@@ -143,9 +175,20 @@ interface MockDataContextValue extends StoreState {
   toggleOffer: (id: string) => void;
   deleteOffer: (id: string) => void;
   sendOfferToSegment: (offerId: string, segment: string, count: number) => void;
+  // clubs
+  createClub: (input: Omit<Club, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateClub: (id: string, patch: Partial<Club>) => void;
+  toggleClub: (id: string) => void;
+  deleteClub: (id: string) => void;
   // notifications
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (userId: string) => void;
+  /** Player support ticket → admin notification (manual follow-up until payment/chat gate exists). */
+  submitSupportRequest: (input: {
+    issue: string;
+    contactPhone: string;
+    category: SupportRequestCategory;
+  }) => void;
   // profile
   addPhoneNumber: (userId: string, phoneNumber: string, label: string) => void;
   setWhatsappPref: (userId: string, key: 'whatsappOptIn' | 'whatsappMarketingOptIn', value: boolean) => void;
@@ -161,6 +204,9 @@ interface MockDataContextValue extends StoreState {
   /** Admin manually sets a player's level (clears verification; re-verify separately). */
   setPlayerLevel: (userId: string, level: Level) => void;
   setLevelVerified: (userId: string, verified: boolean) => void;
+  /** Admin: update a game format definition (solo/team, gender, points, structure…). */
+  updateFormatDefinition: (id: GameFormat, patch: Partial<FormatDefinition>) => void;
+  formatDefinition: (id: GameFormat) => FormatDefinition | undefined;
 }
 
 const MockDataContext = React.createContext<MockDataContextValue | null>(null);
@@ -211,16 +257,20 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
     () => false,
   );
 
-  const [state, setState] = React.useState<StoreState>(() => ({
+  const [state, setState] = React.useState<StoreState>(() => {
+    const deadline = enforcePartnerNameDeadlines(seedParticipants, seedGames);
+    return {
     users: seedUsers,
     phones: seedPhones,
     applications: seedApplications,
     games: seedGames,
-    participants: seedParticipants,
+    participants: clampFixedTeamRosters(deadline.participants, seedGames),
     teams: seedGameTeams,
     matches: seedGameMatches,
     offers: seedOffers,
+    clubs: seedClubs,
     notifications: seedNotifications,
+    supportRequests: seedSupportRequests,
     karmaEvents: seedKarmaEvents,
     templates: seedTemplates,
     outbound: seedOutbound,
@@ -234,8 +284,10 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
     mergeLogs: seedMergeLogs,
     externalPartnerInvites: [],
     allocationBiases: {},
+    formatDefinitions: SEED_FORMAT_DEFINITIONS.map((d) => ({ ...d, allowedGenderModes: [...d.allowedGenderModes], boostedRounds: [...d.boostedRounds], notes: [...d.notes] })),
     session: loadSession(),
-  }));
+  };
+  });
 
   React.useEffect(() => {
     try {
@@ -244,6 +296,83 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
       // ignore storage failures (private mode etc.)
     }
   }, [state.session]);
+
+  // Enforce partner-name deadlines (8:00 PM) periodically in the prototype
+  React.useEffect(() => {
+    const tick = () => {
+      setState((s) => {
+        const { participants, demotedUserIds } = enforcePartnerNameDeadlines(s.participants, s.games);
+        if (demotedUserIds.length === 0) return s;
+        const demotedParts = s.participants.filter(
+          (p) => demotedUserIds.includes(p.userId) && p.teamEntryKind === 'partner_pending'
+            && !['cancelled', 'waitlisted'].includes(p.status),
+        );
+        let next: StoreState = { ...s, participants };
+        const at = now();
+        for (const part of demotedParts) {
+          const game = s.games.find((g) => g.id === part.gameId);
+          next = {
+            ...next,
+            notifications: [
+              {
+                id: nextId('n'),
+                userId: part.userId,
+                title: 'Moved to waitlist',
+                message: `Partner name was not provided by 8:00 PM${game ? ` for ${game.title}` : ''}. Your spot was moved to the waiting list.`,
+                type: 'partner_deadline_missed',
+                channel: 'whatsapp' as const,
+                isRead: false,
+                relatedGameId: part.gameId,
+                createdAt: at,
+              },
+              ...next.notifications,
+            ],
+          };
+        }
+        const gameIds = [...new Set(demotedParts.map((p) => p.gameId))];
+        for (const gameId of gameIds) {
+          const game = next.games.find((g) => g.id === gameId);
+          if (!game) continue;
+          const candidates = nextWaitlistPromotions(
+            next.participants, next.users, game, next.externalPartnerInvites,
+          );
+          if (candidates.length === 0) continue;
+          next = {
+            ...next,
+            participants: promoteWaitlistParticipants(
+              next.participants,
+              candidates.map((c) => c.id),
+              at,
+              { fixedTeam: isFixedTeamFormat(game.format) },
+            ),
+          };
+          for (const c of candidates) {
+            next = {
+              ...next,
+              notifications: [
+                {
+                  id: nextId('n'),
+                  userId: c.userId,
+                  title: 'You\'re in!',
+                  message: `A spot opened on ${game.title} — you were promoted from the waitlist. Please confirm your spot.`,
+                  type: 'waitlist_promoted',
+                  channel: 'whatsapp' as const,
+                  isRead: false,
+                  relatedGameId: gameId,
+                  createdAt: at,
+                },
+                ...next.notifications,
+              ],
+            };
+          }
+        }
+        return next;
+      });
+    };
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const value = React.useMemo<MockDataContextValue>(() => {
     const patchUser = (s: StoreState, userId: string, patch: Partial<User>): StoreState => ({
@@ -258,7 +387,13 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
       message: string,
       type: string,
       channel: 'in_app' | 'whatsapp' = 'in_app',
-      related?: { gameId?: string; offerId?: string; applicationId?: string; audience?: 'player' | 'admin' },
+      related?: {
+        gameId?: string;
+        offerId?: string;
+        applicationId?: string;
+        supportRequestId?: string;
+        audience?: 'player' | 'admin';
+      },
     ): StoreState => ({
       ...s,
       notifications: [
@@ -273,6 +408,7 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
           relatedGameId: related?.gameId,
           relatedOfferId: related?.offerId,
           relatedApplicationId: related?.applicationId,
+          relatedSupportRequestId: related?.supportRequestId,
           audience: related?.audience,
           createdAt: now(),
         },
@@ -286,7 +422,7 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
       title: string,
       message: string,
       type: string,
-      related?: { gameId?: string; applicationId?: string },
+      related?: { gameId?: string; applicationId?: string; supportRequestId?: string },
     ): StoreState => {
       const admins = s.users.filter((u) => u.role === 'admin');
       let next = s;
@@ -302,6 +438,44 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
         );
       }
       return next;
+    };
+
+    /**
+     * Fill open main-list seats from the waitlist (highest karma first).
+     * Fixed-team games promote one solo/pair unit per free team slot.
+     * Skips restricted / suspended / banned players.
+     */
+    const fillFromWaitlist = (s: StoreState, gameId: string): { next: StoreState; promoted: GameParticipant[] } => {
+      const game = s.games.find((g) => g.id === gameId);
+      if (!game) return { next: s, promoted: [] };
+      const candidates = nextWaitlistPromotions(
+        s.participants, s.users, game, s.externalPartnerInvites,
+      );
+      if (candidates.length === 0) return { next: s, promoted: [] };
+      const at = now();
+      const fixedTeam = isFixedTeamFormat(game.format);
+      let next: StoreState = {
+        ...s,
+        participants: promoteWaitlistParticipants(
+          s.participants,
+          candidates.map((c) => c.id),
+          at,
+          { fixedTeam },
+        ),
+      };
+      for (const c of candidates) {
+        const u = s.users.find((x) => x.id === c.userId);
+        next = pushNotification(
+          next,
+          c.userId,
+          'You\'re in!',
+          `A spot opened on ${game.title} — you were promoted from the waitlist (karma priority${u ? `, balance ${u.karmaBalance}` : ''}). Please confirm your spot.`,
+          'waitlist_promoted',
+          'whatsapp',
+          { gameId },
+        );
+      }
+      return { next, promoted: candidates };
     };
 
     const applyKarma = (s: StoreState, userId: string, eventType: KarmaEventType, points: number, opts: { gameId?: string; reasonCode?: string; note?: string; performedBy?: string } = {}): StoreState => {
@@ -482,10 +656,26 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
           let next: StoreState = {
             ...s,
             participants: [
-              { id: nextId('gp'), gameId, userId, status: 'confirmed' as const, confirmedAt: now(), createdAt: now(), updatedAt: now() },
+              {
+                id: nextId('gp'),
+                gameId,
+                userId,
+                status: 'confirmed' as const,
+                confirmedAt: now(),
+                lookingForPartner: isFixedTeamFormat(game.format) || undefined,
+                createdAt: now(),
+                updatedAt: now(),
+              },
               ...s.participants,
             ],
           };
+          // Without override, never leave a team game over capacity
+          if (!opts?.overrideReason) {
+            next = {
+              ...next,
+              participants: clampFixedTeamRosters(next.participants, next.games),
+            };
+          }
           next = pushNotification(next, userId, 'Added to game', `You were added to ${game.title} at ${game.venue}.`, 'added_to_game', 'whatsapp', { gameId });
           return next;
         });
@@ -495,15 +685,25 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
 
       removePlayerFromGame: (gameId, userId) => {
         const game = state.games.find((g) => g.id === gameId);
+        let promotedNames: string[] = [];
         setState((s) => {
           let next: StoreState = {
             ...s,
             participants: s.participants.filter((p) => !(p.gameId === gameId && p.userId === userId)),
           };
-          if (game) next = pushNotification(next, userId, 'Removed from game', `You were removed from ${game.title}.`, 'removed_from_game', 'whatsapp', { gameId });
+          if (game) {
+            next = pushNotification(next, userId, 'Removed from game', `You were removed from ${game.title}.`, 'removed_from_game', 'whatsapp', { gameId });
+          }
+          const filled = fillFromWaitlist(next, gameId);
+          next = filled.next;
+          promotedNames = filled.promoted.map((p) => s.users.find((u) => u.id === p.userId)?.name ?? 'Player');
           return next;
         });
-        toast('Player removed', { description: 'WhatsApp notification sent (simulated).' });
+        toast('Player removed', {
+          description: promotedNames.length > 0
+            ? `Waitlist promoted (karma priority): ${promotedNames.join(', ')}.`
+            : 'WhatsApp notification sent (simulated).',
+        });
       },
 
       startGame: (gameId) => {
@@ -757,56 +957,239 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
           toast.error('Already registered', { description: 'You already have a spot on this game.' });
           return;
         }
-        const taken = spotsTaken(state.participants, gameId, state.externalPartnerInvites, game.format);
-        const waitlisted = taken >= game.capacity;
-        const lookingForPartner = Boolean(opts?.lookingForPartner && isFixedTeamFormat(game.format) && !waitlisted);
-        const status = waitlisted ? 'waitlisted' as const : 'confirmed' as const;
-        setState((s) => {
-          const cancelled = s.participants.find(
-            (p) => p.gameId === gameId && p.userId === userId && p.status === 'cancelled',
+
+        const fixedTeam = isFixedTeamFormat(game.format);
+        const partnerId = opts?.withPartnerUserId;
+        const partner = partnerId ? state.users.find((u) => u.id === partnerId) : undefined;
+        const namedPartner = opts?.partnerName?.trim();
+        const partnerPending = Boolean(fixedTeam && opts?.partnerPending && !partnerId && !namedPartner);
+        const lookingForPartner = Boolean(
+          fixedTeam && opts?.lookingForPartner && !partnerId && !namedPartner && !partnerPending,
+        );
+
+        let entryKind: TeamEntryKind = 'solo';
+        if (fixedTeam) {
+          if (partnerId || namedPartner) entryKind = 'full_pair';
+          else if (partnerPending) entryKind = 'partner_pending';
+          else entryKind = 'solo';
+        }
+
+        if (partnerId) {
+          if (!fixedTeam) {
+            toast.error('Partners only apply to fixed-team formats');
+            return;
+          }
+          if (!partner) {
+            toast.error('Partner not found');
+            return;
+          }
+          if (partnerId === userId) return;
+          const pairOk = partnerPairEligibility(user, partner, game);
+          if (!pairOk.ok) {
+            toast.error('Cannot register as a team', { description: pairOk.reason });
+            return;
+          }
+          if (partner.karmaTier === 'restricted' || partner.karmaTier === 'suspended') {
+            toast.error('Partner cannot join', { description: 'Their karma tier blocks registration.' });
+            return;
+          }
+          const partnerElig = gameJoinEligibility(partner, game);
+          if (!partnerElig.ok) {
+            toast.error('Partner cannot join', { description: partnerElig.reason });
+            return;
+          }
+          const partnerActive = state.participants.find(
+            (p) => p.gameId === gameId && p.userId === partnerId && !['cancelled'].includes(p.status),
           );
-          if (cancelled) {
-            return {
-              ...s,
-              participants: s.participants.map((p) =>
+          if (partnerActive) {
+            toast.error('Partner already registered', { description: 'They already have a spot on this game.' });
+            return;
+          }
+        }
+
+        const at = now();
+        const dueAt = partnerPending ? partnerNameDueAtFrom(new Date(at)) : undefined;
+
+        // Full games always go to the waitlist (priority decides promotion order later).
+        let waitlisted = false;
+        if (fixedTeam) {
+          const teamsTaken = fixedTeamsTaken(state.participants, gameId, state.externalPartnerInvites);
+          waitlisted = teamsTaken >= maxFixedTeams(game.capacity);
+        } else {
+          const taken = spotsTaken(state.participants, gameId, state.externalPartnerInvites, game.format);
+          waitlisted = taken >= game.capacity;
+        }
+
+        const status = waitlisted ? 'waitlisted' as const : 'confirmed' as const;
+
+        let waitPos = 0;
+        if (waitlisted) {
+          const tmpSelf: GameParticipant = {
+            id: 'tmp-self', gameId, userId, status: 'waitlisted',
+            lookingForPartner: lookingForPartner || undefined,
+            partnerUserId: partnerId,
+            partnerName: namedPartner,
+            teamEntryKind: fixedTeam ? entryKind : undefined,
+            partnerNameDueAt: dueAt,
+            createdAt: at, updatedAt: at,
+          };
+          const tmpPartner: GameParticipant | null = partnerId
+            ? {
+                id: 'tmp-partner', gameId, userId: partnerId, status: 'waitlisted',
+                partnerUserId: userId,
+                teamEntryKind: 'full_pair',
+                createdAt: at, updatedAt: at,
+              }
+            : null;
+          const projected = [
+            ...state.participants.filter((p) => p.gameId === gameId && p.status === 'waitlisted'),
+            tmpSelf,
+            ...(tmpPartner ? [tmpPartner] : []),
+          ];
+          waitPos = waitlistPosition(projected, state.users, gameId, userId, game.format) ?? 0;
+        }
+
+        setState((s) => {
+          const upsert = (
+            list: GameParticipant[],
+            uid: string,
+            patch: Partial<GameParticipant>,
+          ): GameParticipant[] => {
+            const cancelled = list.find(
+              (p) => p.gameId === gameId && p.userId === uid && p.status === 'cancelled',
+            );
+            if (cancelled) {
+              return list.map((p) =>
                 p.id === cancelled.id
                   ? {
                       ...p,
-                      status,
+                      ...patch,
                       confirmationRequestedAt: undefined,
-                      confirmedAt: waitlisted ? undefined : now(),
                       declinedAt: undefined,
                       cancelledAt: undefined,
                       replacementOfferedAt: undefined,
                       letsGoAt: undefined,
-                      lookingForPartner: lookingForPartner || undefined,
-                      partnerUserId: undefined,
                       partnerInviteFrom: undefined,
-                      updatedAt: now(),
+                      updatedAt: at,
                     }
-                  : p),
-            };
-          }
-          return {
-            ...s,
-            participants: [
+                  : p);
+            }
+            return [
               {
-                id: nextId('gp'), gameId, userId,
-                status,
-                confirmedAt: waitlisted ? undefined : now(),
-                lookingForPartner: lookingForPartner || undefined,
-                createdAt: now(), updatedAt: now(),
-              },
-              ...s.participants,
-            ],
+                id: nextId('gp'),
+                gameId,
+                userId: uid,
+                createdAt: at,
+                updatedAt: at,
+                ...patch,
+              } as GameParticipant,
+              ...list,
+            ];
           };
+
+          let participants = s.participants;
+
+          if (partnerId) {
+            participants = upsert(participants, userId, {
+              status,
+              confirmedAt: waitlisted ? undefined : at,
+              lookingForPartner: undefined,
+              partnerUserId: partnerId,
+              teamEntryKind: 'full_pair',
+              partnerName: partner?.name,
+              partnerNameDueAt: undefined,
+            });
+            participants = upsert(participants, partnerId, {
+              status,
+              confirmedAt: waitlisted ? undefined : at,
+              lookingForPartner: undefined,
+              partnerUserId: userId,
+              teamEntryKind: 'full_pair',
+              partnerNameDueAt: undefined,
+            });
+          } else {
+            participants = upsert(participants, userId, {
+              status,
+              confirmedAt: waitlisted ? undefined : at,
+              lookingForPartner: lookingForPartner || undefined,
+              partnerUserId: undefined,
+              teamEntryKind: fixedTeam ? entryKind : undefined,
+              partnerName: namedPartner || undefined,
+              partnerNameDueAt: dueAt,
+            });
+          }
+          return { ...s, participants };
         });
-        toast.success(waitlisted ? 'Added to waitlist' : lookingForPartner ? 'You\'re in — find a partner' : 'You\'re in!', {
-          description: waitlisted
-            ? 'The game is full — you are on the waitlist.'
-            : lookingForPartner
-              ? 'Spot confirmed. Invite a Nomad or a friend, or wait for a join request.'
-              : 'We\'ll remind you 24h and 2h before kickoff (simulated WhatsApp).',
+
+        if (waitlisted) {
+          const tierNote = !fixedTeam
+            ? 'Higher karma is promoted first'
+            : entryKind === 'full_pair'
+              ? 'Full pairs are promoted first'
+              : entryKind === 'partner_pending'
+                ? 'After full pairs, Player + Partner teams are next'
+                : 'Solos are promoted after full pairs and Player + Partner teams';
+          toast.success('Added to waitlist', {
+            description: `You're #${waitPos || '?'} on the waiting list. ${tierNote}. We'll notify you if a spot opens — then please confirm.`,
+          });
+        } else if (partnerId) {
+          toast.success('Full pair registered!', {
+            description: `You and ${partner?.name.split(' ')[0] ?? 'your partner'} have priority on the main list.`,
+          });
+        } else if (namedPartner) {
+          toast.success('Full pair registered!', {
+            description: `You and ${namedPartner} are confirmed (highest priority).`,
+          });
+        } else if (partnerPending) {
+          const dueLabel = new Date(dueAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          toast.success('Registered — partner name due', {
+            description: `Send your partner's name by ${dueLabel} today or your spot moves to the waitlist.`,
+          });
+        } else if (lookingForPartner) {
+          toast.success('You\'re in — needs a partner', {
+            description: 'Solo priority is below full pairs and partner-pending. Invite someone when you can.',
+          });
+        } else {
+          toast.success('You\'re in!', {
+            description: 'We\'ll remind you 24h and 2h before kickoff (simulated WhatsApp).',
+          });
+        }
+      },
+
+      submitPartnerName: (gameId, userId, partnerName) => {
+        const name = partnerName.trim();
+        if (!name) {
+          toast.error('Enter your partner\'s name');
+          return;
+        }
+        const game = state.games.find((g) => g.id === gameId);
+        const part = state.participants.find(
+          (p) => p.gameId === gameId && p.userId === userId && !['cancelled'].includes(p.status),
+        );
+        if (!part || part.teamEntryKind !== 'partner_pending') {
+          toast.error('Not available', { description: 'Only partner-pending registrations can submit a name here.' });
+          return;
+        }
+        if (part.partnerNameDueAt && new Date(part.partnerNameDueAt).getTime() < Date.now()) {
+          toast.error('Deadline passed', { description: 'Partner name was due by 8:00 PM. You were moved to the waitlist.' });
+          return;
+        }
+        setState((s) => ({
+          ...s,
+          participants: s.participants.map((p) =>
+            p.id === part.id
+              ? {
+                  ...p,
+                  partnerName: name,
+                  teamEntryKind: 'full_pair' as const,
+                  partnerNameDueAt: undefined,
+                  lookingForPartner: undefined,
+                  updatedAt: now(),
+                }
+              : p),
+        }));
+        toast.success('Partner confirmed', {
+          description: `${name} is locked in — your team is now a full pair (highest priority)${game ? ` on ${game.title}` : ''}.`,
         });
       },
 
@@ -896,9 +1279,23 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
             'admin_player_cancelled',
             { gameId },
           );
+          const filled = fillFromWaitlist(next, gameId);
+          next = filled.next;
+          if (filled.promoted.length > 0) {
+            const names = filled.promoted
+              .map((p) => s.users.find((u) => u.id === p.userId)?.name ?? 'Player')
+              .join(', ');
+            next = pushAdminAttention(
+              next,
+              'Waitlist promoted',
+              `${names} moved onto ${game?.title ?? 'the game'} from the waitlist (karma priority).`,
+              'admin_waitlist_promoted',
+              { gameId },
+            );
+          }
           return next;
         });
-        toast('Spot cancelled', { description: 'Your spot was freed. Admin notified (simulated).' });
+        toast('Spot cancelled', { description: 'Your spot was freed. Waitlist filled by karma priority when available.' });
       },
 
       cancelWithPayment: (gameId, userId) => {
@@ -929,8 +1326,8 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
           else next = applyKarma(next, userId, 'late_cancellation', -15, { gameId });
           next = pushNotification(
             next, userId,
-            'Late cancellation — payment owed',
-            `You cancelled ${game?.title ?? 'a game'} within 12 hours. Game fee${game?.price != null ? ` (AED ${game.price})` : ''} is owed.`,
+            'Late cancellation — payment link coming',
+            `You cancelled ${game?.title ?? 'a game'} within 12 hours. Online payments aren't live yet — an admin will contact you soon with a payment link${game?.price != null ? ` for AED ${game.price}` : ''}.`,
             'late_cancellation', 'whatsapp',
             { gameId },
           );
@@ -941,63 +1338,127 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
             'admin_late_cancellation',
             { gameId },
           );
+          const filled = fillFromWaitlist(next, gameId);
+          next = filled.next;
+          if (filled.promoted.length > 0) {
+            const names = filled.promoted
+              .map((p) => s.users.find((u) => u.id === p.userId)?.name ?? 'Player')
+              .join(', ');
+            next = pushAdminAttention(
+              next,
+              'Waitlist promoted',
+              `${names} moved onto ${game?.title ?? 'the game'} from the waitlist (karma priority).`,
+              'admin_waitlist_promoted',
+              { gameId },
+            );
+          }
           return next;
         });
-        toast('Cancelled — payment owed', {
+        toast('Cancelled — payment link coming', {
           description: game?.price != null
-            ? `Please pay AED ${game.price}. Late cancellation karma applied.`
-            : 'Please settle the game fee with the organizer. Late cancellation karma applied.',
+            ? `Online payments aren't live yet. An admin will contact you soon with a payment link for AED ${game.price}. Late cancellation karma applied.`
+            : `Online payments aren't live yet. An admin will contact you soon with a payment link for the game fee. Late cancellation karma applied.`,
         });
       },
 
       offerReplacement: (gameId, userId) => {
         const game = state.games.find((g) => g.id === gameId);
         const user = state.users.find((u) => u.id === userId);
-        const waitlist = state.participants.filter((p) => p.gameId === gameId && p.status === 'waitlisted');
-        if (waitlist.length === 0) {
+        if (!game) return;
+
+        // Project the cancel so team/person capacity opens before picking promotions
+        const afterCancel = state.participants.map((p) =>
+          p.gameId === gameId && p.userId === userId
+            ? {
+                ...p,
+                status: 'cancelled' as const,
+                partnerUserId: undefined,
+                lookingForPartner: undefined,
+              }
+            : p.gameId === gameId && p.partnerUserId === userId
+              ? { ...p, partnerUserId: undefined, lookingForPartner: true }
+              : p,
+        );
+        const toPromote = nextWaitlistPromotions(
+          afterCancel, state.users, game, state.externalPartnerInvites, 1,
+        );
+        if (toPromote.length === 0) {
           setState((s) => pushAdminAttention(
             s,
             'Replacement needed',
-            `${user?.name ?? 'A player'} needs a late-cancel replacement for ${game?.title ?? 'a game'} — no waitlist available.`,
+            `${user?.name ?? 'A player'} needs a late-cancel replacement for ${game.title} — no waitlist available.`,
             'admin_replacement_needed',
             { gameId },
           ));
           toast.error('No waitlist', { description: 'Admin was notified. Message the organizer on WhatsApp to arrange a replacement.' });
           return;
         }
+        const promoteIds = new Set(toPromote.map((p) => p.id));
+        const names = toPromote
+          .map((p) => state.users.find((u) => u.id === p.userId)?.name ?? 'Player')
+          .join(' + ');
+        const fixedTeam = isFixedTeamFormat(game.format);
         setState((s) => {
+          const at = now();
           let next: StoreState = {
             ...s,
-            participants: s.participants.map((p) =>
-              p.gameId === gameId && p.userId === userId
-                ? {
+            participants: promoteWaitlistParticipants(
+              s.participants.map((p) => {
+                if (p.gameId === gameId && p.userId === userId) {
+                  return {
                     ...p,
-                    status: 'pending_replacement' as const,
-                    replacementOfferedAt: now(),
-                    updatedAt: now(),
-                  }
-                : p),
+                    status: 'cancelled' as const,
+                    declinedAt: at,
+                    cancelledAt: at,
+                    replacementOfferedAt: at,
+                    partnerUserId: undefined,
+                    partnerInviteFrom: undefined,
+                    lookingForPartner: undefined,
+                    updatedAt: at,
+                  };
+                }
+                if (p.gameId === gameId && p.partnerUserId === userId) {
+                  return {
+                    ...p,
+                    partnerUserId: undefined,
+                    lookingForPartner: true,
+                    updatedAt: at,
+                  };
+                }
+                return p;
+              }),
+              promoteIds,
+              at,
+              { fixedTeam },
+            ),
           };
-          for (const w of waitlist) {
+          next = pushNotification(
+            next, userId,
+            'Replacement found',
+            `${names} from the waitlist took your spot on ${game.title} (highest karma). You are cancelled — no late fee.`,
+            'replacement_taken', 'whatsapp',
+            { gameId },
+          );
+          for (const p of toPromote) {
             next = pushNotification(
-              next, w.userId,
-              'Spot available',
-              `A spot opened on ${game?.title ?? 'a game'} — claim it before someone else does.`,
-              'waitlist_offer', 'whatsapp',
+              next, p.userId,
+              'You\'re in!',
+              `You were promoted from the waitlist onto ${game.title} (karma priority). Please confirm your spot.`,
+              'waitlist_promoted', 'whatsapp',
               { gameId },
             );
           }
           next = pushAdminAttention(
             next,
-            'Replacement in progress',
-            `${user?.name ?? 'A player'} offered their spot on ${game?.title ?? 'a game'} to the waitlist (${waitlist.length}).`,
+            'Replacement completed',
+            `${user?.name ?? 'A player'} offered their spot on ${game.title}; ${names} was promoted (karma priority).`,
             'admin_replacement_offered',
             { gameId },
           );
           return next;
         });
-        toast.success('Spot offered to waitlist', {
-          description: `${waitlist.length} player${waitlist.length === 1 ? '' : 's'} notified. Your place cancels when someone takes it.`,
+        toast.success('Spot filled from waitlist', {
+          description: `${names} was promoted. No late fee for you.`,
         });
       },
 
@@ -1010,7 +1471,44 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
           (p) => p.gameId === gameId && p.userId === userId && p.status === 'waitlisted',
         );
         if (!offering || !waiter) {
-          toast.error('Spot no longer available');
+          // Fallback: if a seat is open, promote by karma (may include this user)
+          const openGame = state.games.find((g) => g.id === gameId);
+          if (!openGame) {
+            toast.error('Spot no longer available');
+            return;
+          }
+          const open = openGame.capacity - spotsTaken(
+            state.participants, gameId, state.externalPartnerInvites, openGame.format,
+          );
+          if (open <= 0 || !waiter) {
+            toast.error('Spot no longer available');
+            return;
+          }
+          const ordered = waitlistOrdered(state.participants, state.users, gameId)
+            .filter((p) => {
+              const u = state.users.find((x) => x.id === p.userId);
+              return u && u.status !== 'banned' && u.karmaTier !== 'restricted' && u.karmaTier !== 'suspended';
+            });
+          if (ordered[0]?.userId !== userId) {
+            toast.error('Not your turn yet', {
+              description: 'Spots go to the highest-karma player on the waitlist first.',
+            });
+            return;
+          }
+          setState((s) => fillFromWaitlist(s, gameId).next);
+          toast.success('Spot claimed', { description: `You're confirmed for ${game?.title ?? 'the game'}.` });
+          return;
+        }
+        // Legacy pending_replacement race: only the top karma waitlisted player may claim
+        const ordered = waitlistOrdered(state.participants, state.users, gameId)
+          .filter((p) => {
+            const u = state.users.find((x) => x.id === p.userId);
+            return u && u.status !== 'banned' && u.karmaTier !== 'restricted' && u.karmaTier !== 'suspended';
+          });
+        if (ordered[0]?.userId !== userId) {
+          toast.error('Not your turn yet', {
+            description: 'This spot is reserved for the highest-karma player on the waitlist.',
+          });
           return;
         }
         setState((s) => {
@@ -1048,7 +1546,7 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
           next = pushNotification(
             next, userId,
             'You\'re in!',
-            `You claimed a spot on ${game?.title ?? 'the game'}. See you on court.`,
+            `You claimed a spot on ${game?.title ?? 'the game'} (karma priority). See you on court.`,
             'waitlist_promoted', 'whatsapp',
             { gameId },
           );
@@ -1070,38 +1568,133 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        let fromPart = state.participants.find(
+        const fromMain = state.participants.find(
           (p) => p.gameId === gameId && p.userId === fromUserId && !['cancelled', 'waitlisted'].includes(p.status),
         );
+        const fromWaitlisted = state.participants.find(
+          (p) => p.gameId === gameId && p.userId === fromUserId && p.status === 'waitlisted',
+        );
+        const toPart = state.participants.find(
+          (p) => p.gameId === gameId && p.userId === toUserId && !['cancelled'].includes(p.status),
+        );
+        const teams = fixedTeamsTaken(state.participants, gameId, state.externalPartnerInvites);
+        const gameFull = teams >= maxFixedTeams(game.capacity);
+        const joiningExistingOpen = Boolean(
+          toPart
+          && toPart.status !== 'waitlisted'
+          && !toPart.partnerUserId,
+        );
+
+        // Game full + neither on main list → join waitlist as a team together
+        if (gameFull && !fromMain && !joiningExistingOpen) {
+          if (fromWaitlisted?.partnerUserId || toPart?.partnerUserId) {
+            toast.error('Already paired', { description: 'One of you already has a waitlist partner.' });
+            return;
+          }
+          if (toPart?.status === 'waitlisted') {
+            // Link two waitlisted solos into one team unit
+            setState((s) => ({
+              ...s,
+              participants: s.participants.map((p) => {
+                if (p.gameId !== gameId) return p;
+                if (p.userId === fromUserId && p.status === 'waitlisted') {
+                  return {
+                    ...p,
+                    partnerUserId: toUserId,
+                    lookingForPartner: undefined,
+                    updatedAt: now(),
+                  };
+                }
+                if (p.userId === toUserId && p.status === 'waitlisted') {
+                  return {
+                    ...p,
+                    partnerUserId: fromUserId,
+                    lookingForPartner: undefined,
+                    updatedAt: now(),
+                  };
+                }
+                return p;
+              }),
+            }));
+            toast.success('Waitlist team linked', {
+              description: `You and ${to.name.split(' ')[0]} share one waitlist spot.`,
+            });
+            return;
+          }
+          // Register both onto waitlist as a linked team
+          const at = now();
+          setState((s) => {
+            const upsert = (participants: GameParticipant[], uid: string, partner: string): GameParticipant[] => {
+              const cancelled = participants.find(
+                (p) => p.gameId === gameId && p.userId === uid && p.status === 'cancelled',
+              );
+              if (cancelled) {
+                return participants.map((p) =>
+                  p.id === cancelled.id
+                    ? {
+                        ...p,
+                        status: 'waitlisted' as const,
+                        confirmedAt: undefined,
+                        declinedAt: undefined,
+                        cancelledAt: undefined,
+                        lookingForPartner: undefined,
+                        partnerUserId: partner,
+                        partnerInviteFrom: undefined,
+                        updatedAt: at,
+                      }
+                    : p);
+              }
+              if (participants.some((p) => p.gameId === gameId && p.userId === uid && p.status === 'waitlisted')) {
+                return participants.map((p) =>
+                  p.gameId === gameId && p.userId === uid && p.status === 'waitlisted'
+                    ? {
+                        ...p,
+                        lookingForPartner: undefined,
+                        partnerUserId: partner,
+                        updatedAt: at,
+                      }
+                    : p);
+              }
+              return [
+                {
+                  id: nextId('gp'),
+                  gameId,
+                  userId: uid,
+                  status: 'waitlisted' as const,
+                  partnerUserId: partner,
+                  createdAt: at,
+                  updatedAt: at,
+                },
+                ...participants,
+              ];
+            };
+            let participants = s.participants;
+            participants = upsert(participants, fromUserId, toUserId);
+            participants = upsert(participants, toUserId, fromUserId);
+            return { ...s, participants };
+          });
+          toast.success('Waitlist spot confirmed', {
+            description: `Your team is on the waitlist. We'll notify you if you're moved to the main list (karma priority).`,
+          });
+          return;
+        }
+
+        let fromPart = fromMain;
         // Auto-register sender as solo if they are not on the game yet
         if (!fromPart) {
           if (from.karmaTier === 'restricted' || from.karmaTier === 'suspended') {
             toast.error('Registration blocked', { description: 'Your karma tier blocks self-registration.' });
             return;
           }
-          // Joining an existing open solo fills their reserved team slot — no new team needed
-          const joiningExistingOpen = Boolean(
-            state.participants.find(
-              (p) => p.gameId === gameId && p.userId === toUserId
-                && !['cancelled', 'waitlisted'].includes(p.status)
-                && !p.partnerUserId,
-            ),
-          );
-          if (!joiningExistingOpen) {
-            const teams = fixedTeamsTaken(state.participants, gameId, state.externalPartnerInvites);
-            if (teams >= maxFixedTeams(game.capacity)) {
-              toast.error('Game is full');
-              return;
-            }
+          if (!joiningExistingOpen && gameFull) {
+            toast.error('Game is full');
+            return;
           }
         }
         if (fromPart?.partnerUserId) {
           toast.error('You already have a partner');
           return;
         }
-        const toPart = state.participants.find(
-          (p) => p.gameId === gameId && p.userId === toUserId && !['cancelled'].includes(p.status),
-        );
         if (toPart?.partnerUserId) {
           toast.error(`${to.name.split(' ')[0]} already has a partner`);
           return;
@@ -1114,12 +1707,9 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
         if (!toPart) {
           // New invitee: only needs a free team slot when the sender is also new
           // (one new team). If sender already has a team slot, invitee fills it.
-          if (!fromPart) {
-            const teams = fixedTeamsTaken(state.participants, gameId, state.externalPartnerInvites);
-            if (teams >= maxFixedTeams(game.capacity)) {
-              toast.error('Game is full', { description: 'No free team slot to invite a new player.' });
-              return;
-            }
+          if (!fromPart && gameFull) {
+            toast.error('Game is full', { description: 'No free team slot to invite a new player.' });
+            return;
           }
         }
 
@@ -1353,6 +1943,8 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
                   partnerUserId: fromId,
                   partnerInviteFrom: undefined,
                   lookingForPartner: false,
+                  teamEntryKind: 'full_pair' as const,
+                  partnerNameDueAt: undefined,
                   updatedAt: now(),
                 };
               }
@@ -1362,6 +1954,8 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
                   partnerUserId: userId,
                   lookingForPartner: false,
                   partnerInviteFrom: undefined,
+                  teamEntryKind: 'full_pair' as const,
+                  partnerNameDueAt: undefined,
                   updatedAt: now(),
                 };
               }
@@ -1611,6 +2205,40 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
         toast('Offer removed');
       },
 
+      createClub: (input) => {
+        setState((s) => ({
+          ...s,
+          clubs: [{ ...input, id: nextId('club'), createdAt: now(), updatedAt: now() }, ...s.clubs],
+        }));
+        toast.success('Club created');
+      },
+
+      updateClub: (id, patch) => {
+        setState((s) => ({
+          ...s,
+          clubs: s.clubs.map((c) => (c.id === id ? { ...c, ...patch, updatedAt: now() } : c)),
+        }));
+        toast.success('Club updated');
+      },
+
+      toggleClub: (id) => {
+        setState((s) => ({
+          ...s,
+          clubs: s.clubs.map((c) =>
+            c.id === id
+              ? { ...c, status: c.status === 'active' ? 'inactive' as const : 'active' as const, updatedAt: now() }
+              : c,
+          ),
+        }));
+        const club = state.clubs.find((c) => c.id === id);
+        toast(club?.status === 'active' ? 'Club deactivated' : 'Club activated');
+      },
+
+      deleteClub: (id) => {
+        setState((s) => ({ ...s, clubs: s.clubs.filter((c) => c.id !== id) }));
+        toast('Club removed');
+      },
+
       sendOfferToSegment: (offerId, segment, count) => {
         const offer = state.offers.find((o) => o.id === offerId);
         if (!offer) return;
@@ -1650,6 +2278,54 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
           notifications: s.notifications.map((n) => (n.userId === userId ? { ...n, isRead: true } : n)),
         }));
         toast('All notifications marked as read');
+      },
+
+      submitSupportRequest: ({ issue, contactPhone, category }) => {
+        const trimmedIssue = issue.trim();
+        const phone = contactPhone.trim();
+        if (!trimmedIssue || !/^\+[1-9]\d{7,14}$/.test(phone)) {
+          toast.error('Check your details', {
+            description: 'Describe the issue and enter a valid phone number (E.164, e.g. +9715…).',
+          });
+          return;
+        }
+        const categoryLabel = SUPPORT_CATEGORY_LABELS[category];
+        setState((s) => {
+          const user = s.users.find((u) => u.id === s.session.currentUserId);
+          if (!user) return s;
+          const request: SupportRequest = {
+            id: nextId('sr'),
+            userId: user.id,
+            category,
+            issue: trimmedIssue,
+            contactPhone: phone,
+            status: 'open',
+            createdAt: now(),
+          };
+          let next: StoreState = {
+            ...s,
+            supportRequests: [request, ...s.supportRequests],
+          };
+          next = pushAdminAttention(
+            next,
+            `Support request — ${categoryLabel}`,
+            `${user.name} needs help (${categoryLabel}). Contact: ${phone}. Issue: ${trimmedIssue}`,
+            'admin_support_request',
+            { supportRequestId: request.id },
+          );
+          next = pushNotification(
+            next,
+            user.id,
+            'Support request sent',
+            'Thanks — an admin will contact you soon about your issue.',
+            'support_request_sent',
+            'in_app',
+          );
+          return next;
+        });
+        toast.success('Support request sent', {
+          description: 'An admin will contact you soon using the number you provided.',
+        });
       },
 
       addPhoneNumber: (userId, phoneNumber, label) => {
@@ -1843,6 +2519,33 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
             : 'The verified badge was removed from this player.',
         });
       },
+
+      updateFormatDefinition: (id, patch) => {
+        setState((s) => {
+          const current = s.formatDefinitions.find((d) => d.id === id);
+          if (!current) return s;
+          const nextDef: FormatDefinition = {
+            ...current,
+            ...patch,
+            id: current.id,
+            allowedGenderModes: patch.allowedGenderModes
+              ? [...patch.allowedGenderModes]
+              : [...current.allowedGenderModes],
+            boostedRounds: patch.boostedRounds ? [...patch.boostedRounds] : [...current.boostedRounds],
+            notes: patch.notes ? [...patch.notes] : [...current.notes],
+            updatedAt: now(),
+          };
+          // Keep scoring / round UI in sync with admin edits.
+          syncRuntimeFormatConfig(nextDef);
+          return {
+            ...s,
+            formatDefinitions: s.formatDefinitions.map((d) => (d.id === id ? nextDef : d)),
+          };
+        });
+        toast.success('Format updated', { description: 'Changes apply to new games and live scoring guidance.' });
+      },
+
+      formatDefinition: (id) => state.formatDefinitions.find((d) => d.id === id),
     };
   }, [state]);
 

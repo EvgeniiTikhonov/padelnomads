@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { UserPlus, Users } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PlayerAvatar } from '@/components/player-avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,6 +43,14 @@ type TeamEntry =
       kind: 'open';
       a: GameParticipant;
       userA: User;
+    }
+  | {
+      key: string;
+      kind: 'named';
+      a: GameParticipant;
+      userA: User;
+      partnerName: string;
+      pendingDeadline: boolean;
     };
 
 function buildTeamEntries(
@@ -107,6 +116,24 @@ function buildTeamEntries(
     seen.add(p.userId);
     if (hold) {
       entries.push({ key: `tbc-${p.userId}`, kind: 'tbc', a: p, userA: u, hold });
+    } else if (p.partnerName && !p.partnerUserId) {
+      entries.push({
+        key: `named-${p.userId}`,
+        kind: 'named',
+        a: p,
+        userA: u,
+        partnerName: p.partnerName,
+        pendingDeadline: p.teamEntryKind === 'partner_pending',
+      });
+    } else if (p.teamEntryKind === 'partner_pending') {
+      entries.push({
+        key: `pending-name-${p.userId}`,
+        kind: 'named',
+        a: p,
+        userA: u,
+        partnerName: 'Partner name due',
+        pendingDeadline: true,
+      });
     } else {
       entries.push({ key: `open-${p.userId}`, kind: 'open', a: p, userA: u });
     }
@@ -127,11 +154,7 @@ function PlayerChip({
   return (
     <div className="flex min-w-0 items-center gap-2">
       <Link href={`/app/players/${user.id}`} className="flex min-w-0 items-center gap-2 hover:text-primary">
-        <Avatar className="size-8 shrink-0">
-          <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-            {initials(user.name)}
-          </AvatarFallback>
-        </Avatar>
+        <PlayerAvatar user={user} className="size-8 shrink-0" fallbackClassName="text-xs" />
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium">
             {user.name}
@@ -189,8 +212,9 @@ export function FixedTeamRoster({ game }: { game: Game }) {
                 key={entry.key}
                 className="rounded-xl border border-white/10 bg-white/[0.03] p-3"
               >
-                <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   <Users className="size-3" /> Team
+                  <Badge variant="secondary" className="text-[10px] normal-case">1st priority · Full pair</Badge>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
                   <PlayerChip
@@ -256,6 +280,7 @@ export function FixedTeamRoster({ game }: { game: Game }) {
                     <Users className="size-3" /> Team
                   </span>
                   <Badge variant="secondary" className="text-[10px]">Partner (TBC)</Badge>
+                  <Badge variant="secondary" className="text-[10px]">1st priority</Badge>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
                   <PlayerChip
@@ -276,6 +301,59 @@ export function FixedTeamRoster({ game }: { game: Game }) {
                       </span>
                       <span className="text-xs text-sky-300/90">
                         {entry.hold.friendName} · held 24h
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          if (entry.kind === 'named') {
+            const due = entry.a.partnerNameDueAt
+              ? new Date(entry.a.partnerNameDueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : '8:00 PM';
+            return (
+              <div
+                key={entry.key}
+                className={`rounded-xl border p-3 ${
+                  entry.pendingDeadline
+                    ? 'border-orange-500/30 bg-orange-500/5'
+                    : 'border-emerald-500/25 bg-emerald-500/5'
+                }`}
+              >
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide ${
+                    entry.pendingDeadline ? 'text-orange-300/80' : 'text-emerald-300/80'
+                  }`}>
+                    <Users className="size-3" /> Team
+                  </span>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {entry.pendingDeadline ? '2nd priority' : '1st priority'}
+                  </Badge>
+                  {entry.pendingDeadline && (
+                    <Badge variant="secondary" className="text-[10px] text-orange-300">
+                      Name due {due}
+                    </Badge>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+                  <PlayerChip
+                    user={entry.userA}
+                    you={entry.userA.id === currentUser.id}
+                    status={entry.a.status}
+                  />
+                  <span className="hidden text-center text-xs font-medium text-muted-foreground sm:block">+</span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Avatar className="size-8 shrink-0">
+                      <AvatarFallback className="bg-muted text-xs font-semibold text-muted-foreground">
+                        {entry.pendingDeadline ? '?' : initials(entry.partnerName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{entry.partnerName}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {entry.pendingDeadline ? 'Partner name not submitted yet' : 'Named partner'}
                       </span>
                     </span>
                   </div>
@@ -319,7 +397,7 @@ export function FixedTeamRoster({ game }: { game: Game }) {
                   </Badge>
                 ) : (
                   <Badge variant="secondary" className="text-[10px] text-amber-300">
-                    Needs partner
+                    Needs partner · 3rd priority
                   </Badge>
                 )}
               </div>

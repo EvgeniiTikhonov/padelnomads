@@ -1,5 +1,11 @@
-import type { ExternalPartnerInvite, Game, GameFormat, GameParticipant, User } from '@/types';
+import type { ExternalPartnerInvite, Game, GameFormat, GameParticipant, LeaderboardKind, User } from '@/types';
 import { isFixedTeamFormat } from '@/lib/format';
+
+/** Games that count toward a given leaderboard scope. Community = every game. */
+export function gamesForLeaderboard(games: Game[], kind: LeaderboardKind = 'community'): Game[] {
+  if (kind === 'community') return games;
+  return games.filter((g) => g.league === kind);
+}
 
 export function visibleGames(games: Game[]): Game[] {
   return games.filter((g) => !g.deleted);
@@ -43,6 +49,55 @@ export function maxFixedTeams(capacity: number): number {
   return Math.floor(capacity / 2);
 }
 
+/** Main-list team units (pair / pending / solo) for capacity enforcement. */
+export function mainListTeamUnits(
+  participants: GameParticipant[],
+  gameId: string,
+): { userIds: string[]; createdAt: string }[] {
+  const active = rosterFor(participants, gameId).filter(
+    (p) => !['cancelled', 'waitlisted'].includes(p.status),
+  );
+  const byUser = new Map(active.map((p) => [p.userId, p]));
+  const seen = new Set<string>();
+  const units: { userIds: string[]; createdAt: string }[] = [];
+
+  for (const p of active) {
+    if (seen.has(p.userId)) continue;
+
+    if (p.partnerUserId && byUser.has(p.partnerUserId)) {
+      const partner = byUser.get(p.partnerUserId)!;
+      seen.add(p.userId);
+      seen.add(p.partnerUserId);
+      units.push({
+        userIds: [p.userId, p.partnerUserId],
+        createdAt: [p.createdAt, partner.createdAt].sort()[0]!,
+      });
+      continue;
+    }
+
+    if (p.partnerInviteFrom && byUser.has(p.partnerInviteFrom)) {
+      const proposer = byUser.get(p.partnerInviteFrom)!;
+      seen.add(p.userId);
+      seen.add(p.partnerInviteFrom);
+      units.push({
+        userIds: [p.userId, p.partnerInviteFrom],
+        createdAt: [p.createdAt, proposer.createdAt].sort()[0]!,
+      });
+      continue;
+    }
+
+    // Outgoing invite proposer is counted with the recipient above
+    if (active.some((q) => q.partnerInviteFrom === p.userId)) {
+      continue;
+    }
+
+    seen.add(p.userId);
+    units.push({ userIds: [p.userId], createdAt: p.createdAt });
+  }
+
+  return units;
+}
+
 /**
  * How many team slots are occupied on a fixed-team game.
  * A pair, a pending invite pair, a solo looking for a partner, or a solo +
@@ -53,40 +108,64 @@ export function fixedTeamsTaken(
   gameId: string,
   _externalInvites: ExternalPartnerInvite[] = [],
 ): number {
-  const active = rosterFor(participants, gameId).filter(
-    (p) => !['cancelled', 'waitlisted'].includes(p.status),
-  );
-  const byUser = new Map(active.map((p) => [p.userId, p]));
-  const seen = new Set<string>();
-  let teams = 0;
+  return mainListTeamUnits(participants, gameId).length;
+}
 
-  for (const p of active) {
-    if (seen.has(p.userId)) continue;
+/**
+ * Demote excess main-list team units to the waitlist.
+ * Keeps higher-priority teams (full pair → partner pending → solo), then earliest.
+ */
+export function clampFixedTeamRosters(
+  participants: GameParticipant[],
+  games: Pick<Game, 'id' | 'capacity' | 'format' | 'deleted'>[],
+): GameParticipant[] {
+  const entryRank = (p: GameParticipant): number => {
+    if (p.teamEntryKind === 'full_pair') return 1;
+    if (p.teamEntryKind === 'partner_pending') return 2;
+    if (p.teamEntryKind === 'solo') return 3;
+    if (p.partnerUserId || (p.partnerName && !p.lookingForPartner)) return 1;
+    if (p.partnerNameDueAt) return 2;
+    return 3;
+  };
 
-    if (p.partnerUserId && byUser.has(p.partnerUserId)) {
-      seen.add(p.userId);
-      seen.add(p.partnerUserId);
-      teams += 1;
-      continue;
-    }
-
-    if (p.partnerInviteFrom && byUser.has(p.partnerInviteFrom)) {
-      seen.add(p.userId);
-      seen.add(p.partnerInviteFrom);
-      teams += 1;
-      continue;
-    }
-
-    // Outgoing invite proposer is counted with the recipient above
-    if (active.some((q) => q.partnerInviteFrom === p.userId)) {
-      continue;
-    }
-
-    seen.add(p.userId);
-    teams += 1;
+  let next = participants;
+  for (const game of games) {
+    if (game.deleted || !isFixedTeamFormat(game.format)) continue;
+    const max = maxFixedTeams(game.capacity);
+    const byUser = new Map(
+      next.filter((p) => p.gameId === game.id).map((p) => [p.userId, p]),
+    );
+    const units = mainListTeamUnits(next, game.id)
+      .map((u) => {
+        const members = u.userIds
+          .map((id) => byUser.get(id))
+          .filter((p): p is GameParticipant => Boolean(p));
+        const priority = Math.min(...members.map(entryRank), 3);
+        return { ...u, priority };
+      })
+      .sort((a, b) => {
+        if (a.priority !== b.priority) return a.priority - b.priority;
+        return a.createdAt.localeCompare(b.createdAt);
+      });
+    if (units.length <= max) continue;
+    const demote = new Set(units.slice(max).flatMap((u) => u.userIds));
+    next = next.map((p) => {
+      if (p.gameId !== game.id || !demote.has(p.userId)) return p;
+      if (['cancelled', 'waitlisted'].includes(p.status)) return p;
+      return {
+        ...p,
+        status: 'waitlisted' as const,
+        confirmedAt: undefined,
+        lookingForPartner: p.partnerUserId ? undefined : true,
+        teamEntryKind: p.partnerUserId || p.partnerName
+          ? 'full_pair' as const
+          : p.teamEntryKind === 'partner_pending'
+            ? 'partner_pending' as const
+            : 'solo' as const,
+      };
+    });
   }
-
-  return teams;
+  return next;
 }
 
 /**
@@ -149,19 +228,24 @@ export interface LeaderboardDetailedRow {
 }
 
 /**
- * Leaderboard with podium counts and an optional date window (yyyy-mm-dd,
- * inclusive). Without a window, points = the player's official rating (incl.
- * manual adjustments); within a window, points earned in those games are summed.
+ * Leaderboard with podium counts, optional date window (yyyy-mm-dd, inclusive),
+ * and optional league scope.
+ *
+ * - Community + no window: points = official rating (incl. manual adjustments).
+ * - Community + window, or any league: points = sum of pointsAwarded from
+ *   matching completed games only.
  */
 export function leaderboardDetailed(
   users: User[],
   participants: GameParticipant[],
   games: Game[],
   range?: { from?: string; to?: string },
+  kind: LeaderboardKind = 'community',
 ): LeaderboardDetailedRow[] {
   const hasRange = Boolean(range?.from || range?.to);
+  const deriveFromGames = hasRange || kind !== 'community';
   const completedIds = new Set(
-    games
+    gamesForLeaderboard(games, kind)
       .filter((g) => g.status === 'completed' && !g.deleted)
       .filter((g) => (!range?.from || g.date >= range.from) && (!range?.to || g.date <= range.to))
       .map((g) => g.id),
@@ -180,7 +264,7 @@ export function leaderboardDetailed(
         first: mine.filter((p) => p.position === 1).length,
         second: mine.filter((p) => p.position === 2).length,
         third: mine.filter((p) => p.position === 3).length,
-        points: hasRange
+        points: deriveFromGames
           ? mine.reduce((s, p) => s + (p.pointsAwarded ?? 0), 0)
           : user.points,
       };

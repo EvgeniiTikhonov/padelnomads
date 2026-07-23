@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { FORMAT_CONFIG } from '@/lib/gameFormats';
+import { formatConfig } from '@/lib/gameFormats';
 import { computeStandings } from '@/lib/scoring';
 import type { Game, GameMatch, GameTeam, User } from '@/types';
 
@@ -20,7 +20,7 @@ export function GameResults({
   highlightTeamId?: string;
   linkPlayers?: boolean;
 }) {
-  const cfg = FORMAT_CONFIG[game.format];
+  const cfg = formatConfig(game.format);
   const standings = computeStandings(game, teams, matches);
   const teamName = (id: string) => teams.find((t) => t.id === id)?.name ?? 'Team';
   const playersOf = (id: string) => {
