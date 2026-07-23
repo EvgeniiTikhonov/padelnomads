@@ -6,18 +6,23 @@ import type {
   User, PlayerPhoneNumber, Application, Game, GameParticipant, GameTeam, GameMatch, Offer, Club,
   AppNotification, KarmaEvent, MessageTemplate, OutboundMessage, InboundMessage,
   ImportBatch, ImportRecord, PlayerMergeLog, BanRecord, RatingAdjustment, ActivityLog,
-  ExternalPartnerInvite, MockSession, ViewRole, KarmaEventType, GameStatus, ParticipantStatus, Level,
-  GameFormat, SupportRequest, SupportRequestCategory,
+  ExternalPartnerInvite, CommunityInvite, PlayerReferral, MockSession, ViewRole, KarmaEventType, GameStatus, ParticipantStatus, Level,
+  GameFormat, SupportRequest, SupportRequestCategory, PreferredSide, Gender,
 } from '@/types';
 import { computeStandings, generateNextRoundMatches } from '@/lib/scoring';
 import {
   seedUsers, seedPhones, seedApplications, seedGames, seedParticipants, seedGameTeams, seedGameMatches,
-  seedOffers, seedClubs, seedNotifications, seedSupportRequests, seedKarmaEvents, seedTemplates, seedOutbound,
+  seedOffers, seedClubs, seedNotifications, seedSupportRequests, seedCommunityInvites, seedPlayerReferrals, seedKarmaEvents, seedTemplates, seedOutbound,
   seedInbound, seedImportBatches, seedImportRecords, seedDuplicates,
   seedBanRecords, seedRatingAdjustments, seedActivityLogs, seedMergeLogs,
   type DuplicateCandidate,
 } from './mock';
-import { karmaTierFor, KARMA_EVENT_LABELS, SUPPORT_CATEGORY_LABELS, isFixedTeamFormat, EXTERNAL_PARTNER_HOLD_HOURS } from '@/lib/format';
+import {
+  karmaTierFor, KARMA_EVENT_LABELS, SUPPORT_CATEGORY_LABELS, LEVEL_LABELS,
+  isFixedTeamFormat, EXTERNAL_PARTNER_HOLD_HOURS,
+  playerWhatsAppUrl, communityInviteClaimUrl, communityInviteWhatsAppMessage,
+  playerReferralApplyUrl, playerReferralWhatsAppMessage,
+} from '@/lib/format';
 import { spotsTaken, fixedTeamsTaken, maxFixedTeams, isGameFull, clampFixedTeamRosters } from '@/lib/derive';
 import {
   nextWaitlistPromotions, promoteWaitlistParticipants, waitlistOrdered, waitlistPosition,
@@ -63,6 +68,8 @@ interface StoreState {
   activityLogs: ActivityLog[];
   mergeLogs: PlayerMergeLog[];
   externalPartnerInvites: ExternalPartnerInvite[];
+  communityInvites: CommunityInvite[];
+  playerReferrals: PlayerReferral[];
   /** Learned per-player strength bias from past manual court adjustments. */
   allocationBiases: Record<string, number>;
   /** Admin-editable game format catalogue. */
@@ -77,6 +84,8 @@ export interface ApplicationFormInput {
   gender?: Application['gender'];
   referralSource?: Application['referralSource'];
   referrerPhoneNumber?: string;
+  referredByUserId?: string;
+  playerReferralId?: string;
   proofOfSkillFileUrl?: string;
   phoneNumber: string;
   email?: string;
@@ -106,6 +115,31 @@ interface MockDataContextValue extends StoreState {
   approveApplication: (id: string, overrideReason?: string) => void;
   rejectApplication: (id: string) => void;
   setApplicationStatusAdmin: (id: string, status: Application['status']) => void;
+  /** Admin: invite a friend with a preset profile (skips application approval). */
+  createCommunityInvite: (input: {
+    name: string;
+    phoneNumber: string;
+    email?: string;
+    level: Level;
+    levelVerified: boolean;
+    preferredSide: PreferredSide;
+    gender?: Gender;
+    referredByUserId: string;
+    openWhatsApp?: boolean;
+  }) => CommunityInvite | null;
+  resendCommunityInviteWhatsApp: (inviteId: string) => void;
+  revokeCommunityInvite: (inviteId: string) => void;
+  /** Public: claim invite token → approved member, no admin approval. */
+  claimCommunityInvite: (token: string, opts?: { whatsappOptIn?: boolean }) => boolean;
+  /** Player: invite a friend to apply (WhatsApp share + apply?ref= link). */
+  createPlayerReferral: (input: {
+    friendName: string;
+    friendPhone: string;
+    level: Level;
+    openWhatsApp?: boolean;
+  }) => PlayerReferral | null;
+  resendPlayerReferralWhatsApp: (referralId: string) => void;
+  revokePlayerReferral: (referralId: string) => void;
   // games
   createGame: (input: GameFormInput) => Game;
   updateGame: (id: string, patch: Partial<Game>) => void;
@@ -283,6 +317,8 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
     activityLogs: seedActivityLogs,
     mergeLogs: seedMergeLogs,
     externalPartnerInvites: [],
+    communityInvites: seedCommunityInvites,
+    playerReferrals: seedPlayerReferrals,
     allocationBiases: {},
     formatDefinitions: SEED_FORMAT_DEFINITIONS.map((d) => ({ ...d, allowedGenderModes: [...d.allowedGenderModes], boostedRounds: [...d.boostedRounds], notes: [...d.notes] })),
     session: loadSession(),
@@ -511,12 +547,22 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
           state.phones.some((p) => p.userId === u.id && p.phoneNumber === input.phoneNumber));
         const blacklisted = state.banRecords.some((b) =>
           b.phoneNumbers.includes(input.phoneNumber) || (input.email && b.email === input.email));
+        const referral = input.playerReferralId
+          ? state.playerReferrals.find((r) => r.id === input.playerReferralId)
+          : undefined;
+        const referredByUserId = input.referredByUserId
+          ?? referral?.fromUserId;
+        const referrer = referredByUserId
+          ? state.users.find((u) => u.id === referredByUserId)
+          : undefined;
         const app: Application = {
           id: nextId('a'),
           name: input.name || undefined,
           level: input.level, preferredSide: input.preferredSide, gender: input.gender,
           referralSource: input.referralSource,
           referrerPhoneNumber: input.referrerPhoneNumber,
+          referredByUserId,
+          playerReferralId: input.playerReferralId ?? referral?.id,
           proofOfSkillFileUrl: input.proofOfSkillFileUrl,
           phoneNumber: input.phoneNumber, email: input.email,
           whatsappOptIn: input.whatsappOptIn, whatsappMarketingOptIn: input.whatsappMarketingOptIn,
@@ -529,31 +575,52 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
             applications: [app, ...s.applications],
             session: { ...s.session, applicationStatus: 'pending' },
           };
+          if (app.playerReferralId) {
+            next = {
+              ...next,
+              playerReferrals: next.playerReferrals.map((r) =>
+                r.id === app.playerReferralId
+                  ? { ...r, status: 'applied' as const, applicationId: app.id }
+                  : r),
+            };
+          }
           const name = app.name?.trim() || app.phoneNumber;
+          const referralBit = referrer
+            ? ` · referral from ${referrer.name}`
+            : '';
           next = pushAdminAttention(
             next,
-            'New application',
-            `${name} applied (${app.level})${app.blacklistFlag ? ' · blacklist flag' : ''}${app.matchedExistingUserId ? ' · identity match' : ''}.`,
+            referrer ? 'New referral application' : 'New application',
+            `${name} applied (${app.level})${referralBit}${app.blacklistFlag ? ' · blacklist flag' : ''}${app.matchedExistingUserId ? ' · identity match' : ''}.`,
             'admin_new_application',
             { applicationId: app.id },
           );
           return next;
         });
-        toast.success('Application submitted', { description: 'Identity match and blacklist checks completed (simulated).' });
+        toast.success('Application submitted', {
+          description: referrer
+            ? `Tagged as referral from ${referrer.name}. Awaiting admin review.`
+            : 'Identity match and blacklist checks completed (simulated).',
+        });
         return app;
       },
 
       approveApplication: (id, overrideReason) => {
+        const appBefore = state.applications.find((a) => a.id === id);
         setState((s) => {
           const app = s.applications.find((a) => a.id === id);
-          if (!app) return s;
+          if (!app || app.status === 'approved') return s;
           let next: StoreState = {
             ...s,
             applications: s.applications.map((a) =>
               a.id === id ? { ...a, status: 'approved' as const, reviewedBy: 'admin1', reviewedAt: now(), updatedAt: now() } : a),
           };
           if (app.matchedExistingUserId) {
-            next = patchUser(next, app.matchedExistingUserId, { status: 'approved', claimedAt: now() });
+            next = patchUser(next, app.matchedExistingUserId, {
+              status: 'approved',
+              claimedAt: now(),
+              ...(app.referredByUserId ? { referredByUserId: app.referredByUserId } : {}),
+            });
           }
           if (app.blacklistFlag && overrideReason) {
             next = {
@@ -564,9 +631,28 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
               ],
             };
           }
+          if (app.referredByUserId) {
+            const friendName = app.name?.trim() || app.phoneNumber;
+            next = applyKarma(next, app.referredByUserId, 'successful_referral', 20, {
+              reasonCode: 'player_referral',
+              note: `${friendName} approved via your referral`,
+            });
+            next = pushNotification(
+              next,
+              app.referredByUserId,
+              'Referral approved · +20 karma',
+              `${friendName} was approved to Padel Nomads thanks to your invite. You earned +20 karma.`,
+              'referral_approved',
+              'in_app',
+            );
+          }
           return next;
         });
-        toast.success('Application approved', { description: 'WhatsApp welcome message sent (simulated).' });
+        toast.success('Application approved', {
+          description: appBefore?.referredByUserId
+            ? 'Welcome sent (simulated). Referrer earned +20 karma.'
+            : 'WhatsApp welcome message sent (simulated).',
+        });
       },
 
       rejectApplication: (id) => {
@@ -579,12 +665,372 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
       },
 
       setApplicationStatusAdmin: (id, status) => {
+        setState((s) => {
+          const app = s.applications.find((a) => a.id === id);
+          if (!app) return s;
+          let next: StoreState = {
+            ...s,
+            applications: s.applications.map((a) =>
+              a.id === id ? { ...a, status, reviewedBy: 'admin1', reviewedAt: now(), updatedAt: now() } : a),
+          };
+          if (status === 'approved' && app.status !== 'approved' && app.referredByUserId) {
+            const friendName = app.name?.trim() || app.phoneNumber;
+            next = applyKarma(next, app.referredByUserId, 'successful_referral', 20, {
+              reasonCode: 'player_referral',
+              note: `${friendName} approved via your referral`,
+            });
+            next = pushNotification(
+              next,
+              app.referredByUserId,
+              'Referral approved · +20 karma',
+              `${friendName} was approved to Padel Nomads thanks to your invite. You earned +20 karma.`,
+              'referral_approved',
+              'in_app',
+            );
+          }
+          return next;
+        });
+        toast('Application status updated');
+      },
+
+      createCommunityInvite: (input) => {
+        const name = input.name.trim();
+        const phone = input.phoneNumber.trim();
+        if (!name) {
+          toast.error('Name required');
+          return null;
+        }
+        if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+          toast.error('Invalid phone', { description: 'Use E.164, e.g. +971501234567.' });
+          return null;
+        }
+        const referrer = state.users.find(
+          (u) => u.id === input.referredByUserId && u.role === 'player' && u.status === 'approved',
+        );
+        if (!referrer) {
+          toast.error('Pick a referring Nomad', { description: 'Choose an approved community member.' });
+          return null;
+        }
+        const phoneTaken = state.phones.some((p) => p.phoneNumber === phone);
+        if (phoneTaken) {
+          toast.error('Phone already registered', {
+            description: 'This number belongs to an existing player or pending invite.',
+          });
+          return null;
+        }
+
+        const created = now();
+        const userId = nextId('u');
+        const inviteId = nextId('ci');
+        const token = `inv${inviteId.replace(/\D/g, '').slice(-6) || Date.now().toString(36)}`;
+        const adminId = state.session.currentUserId;
+
+        const user: User = {
+          id: userId,
+          name,
+          email: input.email?.trim() || undefined,
+          role: 'player',
+          status: 'invited',
+          level: input.level,
+          levelVerified: input.levelVerified,
+          levelVerifiedAt: input.levelVerified ? created : undefined,
+          levelVerifiedBy: input.levelVerified ? adminId : undefined,
+          preferredSide: input.preferredSide,
+          gender: input.gender,
+          whatsappOptIn: true,
+          whatsappOptInAt: created,
+          whatsappMarketingOptIn: false,
+          source: 'invite',
+          referredByUserId: referrer.id,
+          karmaBalance: 100,
+          karmaTier: 'good',
+          points: 0,
+          createdAt: created,
+          updatedAt: created,
+        };
+        const phoneRow: PlayerPhoneNumber = {
+          id: nextId('ph'),
+          userId,
+          phoneNumber: phone,
+          label: 'mobile',
+          isPrimary: true,
+          source: 'admin',
+          createdAt: created,
+          updatedAt: created,
+        };
+        const invite: CommunityInvite = {
+          id: inviteId,
+          token,
+          name,
+          phoneNumber: phone,
+          email: input.email?.trim() || undefined,
+          level: input.level,
+          levelVerified: input.levelVerified,
+          preferredSide: input.preferredSide,
+          gender: input.gender,
+          referredByUserId: referrer.id,
+          createdByAdminId: adminId,
+          userId,
+          status: 'pending',
+          createdAt: created,
+          whatsappOpenedAt: input.openWhatsApp !== false ? created : undefined,
+        };
+
         setState((s) => ({
           ...s,
-          applications: s.applications.map((a) =>
-            a.id === id ? { ...a, status, reviewedBy: 'admin1', reviewedAt: now(), updatedAt: now() } : a),
+          users: [...s.users, user],
+          phones: [...s.phones, phoneRow],
+          communityInvites: [invite, ...s.communityInvites],
+          activityLogs: [
+            {
+              id: nextId('al'),
+              userId: adminId,
+              eventType: 'admin_action',
+              relatedEntityType: 'community_invite',
+              relatedEntityId: inviteId,
+              summary: `Invited ${name} (${LEVEL_LABELS[input.level]}${input.levelVerified ? ', verified' : ''}) referred by ${referrer.name}`,
+              createdAt: created,
+            },
+            ...s.activityLogs,
+          ],
         }));
-        toast('Application status updated');
+
+        if (input.openWhatsApp !== false && typeof window !== 'undefined') {
+          const claimUrl = communityInviteClaimUrl(token);
+          const msg = communityInviteWhatsAppMessage({
+            inviteeName: name,
+            referrerName: referrer.name,
+            levelLabel: LEVEL_LABELS[input.level],
+            claimUrl,
+            verified: input.levelVerified,
+          });
+          window.open(playerWhatsAppUrl(phone, msg), '_blank', 'noopener,noreferrer');
+        }
+
+        toast.success('Invite ready', {
+          description: input.openWhatsApp !== false
+            ? `WhatsApp opened for ${name}. They join via the claim link — no approval needed.`
+            : `Invite created for ${name}. Resend via WhatsApp when ready.`,
+        });
+        return invite;
+      },
+
+      resendCommunityInviteWhatsApp: (inviteId) => {
+        const invite = state.communityInvites.find((i) => i.id === inviteId);
+        if (!invite || invite.status !== 'pending') {
+          toast.error('Invite not available');
+          return;
+        }
+        const referrer = state.users.find((u) => u.id === invite.referredByUserId);
+        if (typeof window !== 'undefined') {
+          const claimUrl = communityInviteClaimUrl(invite.token);
+          const msg = communityInviteWhatsAppMessage({
+            inviteeName: invite.name,
+            referrerName: referrer?.name ?? 'a Nomad',
+            levelLabel: LEVEL_LABELS[invite.level],
+            claimUrl,
+            verified: invite.levelVerified,
+          });
+          window.open(playerWhatsAppUrl(invite.phoneNumber, msg), '_blank', 'noopener,noreferrer');
+        }
+        setState((s) => ({
+          ...s,
+          communityInvites: s.communityInvites.map((i) =>
+            i.id === inviteId ? { ...i, whatsappOpenedAt: now() } : i),
+        }));
+        toast.success('WhatsApp opened', { description: `Invite message ready for ${invite.name}.` });
+      },
+
+      revokeCommunityInvite: (inviteId) => {
+        setState((s) => {
+          const invite = s.communityInvites.find((i) => i.id === inviteId);
+          if (!invite || invite.status !== 'pending') return s;
+          return {
+            ...s,
+            communityInvites: s.communityInvites.map((i) =>
+              i.id === inviteId ? { ...i, status: 'revoked' as const } : i),
+            users: s.users.map((u) =>
+              u.id === invite.userId && u.status === 'invited'
+                ? { ...u, status: 'rejected' as const, updatedAt: now() }
+                : u),
+          };
+        });
+        toast('Invite revoked');
+      },
+
+      claimCommunityInvite: (token, opts) => {
+        const invite = state.communityInvites.find((i) => i.token === token);
+        if (!invite) {
+          toast.error('Invite not found');
+          return false;
+        }
+        if (invite.status === 'claimed') {
+          toast.error('Already joined', { description: 'This invite was already claimed.' });
+          return false;
+        }
+        if (invite.status === 'revoked') {
+          toast.error('Invite revoked', { description: 'Ask an admin for a new invite.' });
+          return false;
+        }
+        const at = now();
+        const optIn = opts?.whatsappOptIn !== false;
+        setState((s) => {
+          let next: StoreState = {
+            ...s,
+            communityInvites: s.communityInvites.map((i) =>
+              i.id === invite.id
+                ? { ...i, status: 'claimed' as const, claimedAt: at }
+                : i),
+            users: s.users.map((u) =>
+              u.id === invite.userId
+                ? {
+                    ...u,
+                    status: 'approved' as const,
+                    claimedAt: at,
+                    memberSince: at.slice(0, 10),
+                    whatsappOptIn: optIn,
+                    whatsappOptInAt: optIn ? at : u.whatsappOptInAt,
+                    updatedAt: at,
+                  }
+                : u),
+            phones: s.phones.map((p) =>
+              p.userId === invite.userId && p.isPrimary
+                ? { ...p, verifiedAt: at, updatedAt: at }
+                : p),
+            session: {
+              viewRole: 'player',
+              currentUserId: invite.userId,
+              applicationStatus: 'approved',
+            },
+          };
+          next = pushNotification(
+            next,
+            invite.userId,
+            'Welcome to Padel Nomads',
+            'Your invite is confirmed — you’re in. No application review needed.',
+            'invite_claimed',
+            'in_app',
+          );
+          const admins = next.users.filter((u) => u.role === 'admin');
+          for (const admin of admins) {
+            next = pushNotification(
+              next,
+              admin.id,
+              'Invite claimed',
+              `${invite.name} joined via invite (referred by community).`,
+              'admin_invite_claimed',
+              'in_app',
+              { audience: 'admin' },
+            );
+          }
+          return next;
+        });
+        toast.success('You’re in!', { description: 'Welcome to Padel Nomads — profile ready, no approval wait.' });
+        return true;
+      },
+
+      createPlayerReferral: (input) => {
+        const friendName = input.friendName.trim();
+        const friendPhone = input.friendPhone.trim();
+        if (!friendName) {
+          toast.error('Friend’s name required');
+          return null;
+        }
+        if (!/^\+[1-9]\d{7,14}$/.test(friendPhone)) {
+          toast.error('Invalid phone', { description: 'Use E.164, e.g. +971501234567.' });
+          return null;
+        }
+        const fromUserId = state.session.currentUserId;
+        const from = state.users.find((u) => u.id === fromUserId);
+        if (!from || from.role !== 'player' || from.status !== 'approved') {
+          toast.error('Only approved members can refer friends');
+          return null;
+        }
+        const dup = state.playerReferrals.find(
+          (r) => r.fromUserId === fromUserId
+            && r.friendPhone === friendPhone
+            && r.status === 'pending',
+        );
+        if (dup) {
+          toast.error('Pending invite exists', {
+            description: 'You already have an open referral for this number — resend it instead.',
+          });
+          return null;
+        }
+
+        const created = now();
+        const id = nextId('pr');
+        const token = `ref${id.replace(/\D/g, '').slice(-6) || Date.now().toString(36)}`;
+        const referral: PlayerReferral = {
+          id,
+          token,
+          fromUserId,
+          friendName,
+          friendPhone,
+          level: input.level,
+          status: 'pending',
+          createdAt: created,
+          whatsappOpenedAt: input.openWhatsApp !== false ? created : undefined,
+        };
+
+        setState((s) => ({
+          ...s,
+          playerReferrals: [referral, ...s.playerReferrals],
+        }));
+
+        if (input.openWhatsApp !== false && typeof window !== 'undefined') {
+          const applyUrl = playerReferralApplyUrl(token);
+          const msg = playerReferralWhatsAppMessage({
+            friendName,
+            referrerName: from.name,
+            levelLabel: LEVEL_LABELS[input.level],
+            applyUrl,
+          });
+          window.open(playerWhatsAppUrl(friendPhone, msg), '_blank', 'noopener,noreferrer');
+        }
+
+        toast.success('Referral ready', {
+          description: input.openWhatsApp !== false
+            ? `WhatsApp opened for ${friendName}. They get higher approval priority; you earn +20 karma when they’re approved.`
+            : `Invite created for ${friendName}. Share via WhatsApp when ready — +20 karma when they’re approved.`,
+        });
+        return referral;
+      },
+
+      resendPlayerReferralWhatsApp: (referralId) => {
+        const referral = state.playerReferrals.find((r) => r.id === referralId);
+        if (!referral || referral.status !== 'pending') {
+          toast.error('Referral not available');
+          return;
+        }
+        const from = state.users.find((u) => u.id === referral.fromUserId);
+        if (typeof window !== 'undefined') {
+          const applyUrl = playerReferralApplyUrl(referral.token);
+          const msg = playerReferralWhatsAppMessage({
+            friendName: referral.friendName,
+            referrerName: from?.name ?? 'a Nomad',
+            levelLabel: LEVEL_LABELS[referral.level],
+            applyUrl,
+          });
+          window.open(playerWhatsAppUrl(referral.friendPhone, msg), '_blank', 'noopener,noreferrer');
+        }
+        setState((s) => ({
+          ...s,
+          playerReferrals: s.playerReferrals.map((r) =>
+            r.id === referralId ? { ...r, whatsappOpenedAt: now() } : r),
+        }));
+        toast.success('WhatsApp opened', { description: `Invite message ready for ${referral.friendName}.` });
+      },
+
+      revokePlayerReferral: (referralId) => {
+        setState((s) => ({
+          ...s,
+          playerReferrals: s.playerReferrals.map((r) =>
+            r.id === referralId && r.status === 'pending'
+              ? { ...r, status: 'revoked' as const }
+              : r),
+        }));
+        toast('Referral revoked');
       },
 
       createGame: (input) => {

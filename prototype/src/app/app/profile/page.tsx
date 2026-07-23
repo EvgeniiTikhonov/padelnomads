@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Phone, Plus, Star, History, ShieldCheck, LifeBuoy } from 'lucide-react';
+import { Phone, Plus, Star, History, ShieldCheck, LifeBuoy, UserPlus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,6 +39,10 @@ export default function ProfilePage() {
   const [newPhone, setNewPhone] = React.useState('');
   const [otpStage, setOtpStage] = React.useState(false);
   const [otp, setOtp] = React.useState('');
+
+  const referredBy = currentUser.referredByUserId
+    ? users.find((u) => u.id === currentUser.referredByUserId)
+    : undefined;
 
   const board = leaderboard(users, participants, games);
   const myRow = board.find((r) => r.user.id === currentUser.id);
@@ -89,6 +93,14 @@ export default function ProfilePage() {
                 <ShieldCheck className="size-3 text-green-600" /> Approved
               </Badge>
             </div>
+            {referredBy && (
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Referred by{' '}
+                <Link href={`/app/players/${referredBy.id}`} className="text-foreground/80 hover:text-primary">
+                  {referredBy.name}
+                </Link>
+              </p>
+            )}
           </div>
           {currentUser.memberSince && (
             <p className="text-xs text-muted-foreground">Member since {formatDate(currentUser.memberSince)}</p>
@@ -150,8 +162,8 @@ export default function ProfilePage() {
               </div>
               <Progress value={Math.max(0, currentUser.karmaBalance)} className="mt-2 h-2" />
               <p className="mt-2 text-xs text-muted-foreground">
-                Karma measures reliability, not skill. Earn +2 per on-time game; late cancellations,
-                no-shows and unpaid games reduce it. Below 20 restricts sign-ups; 0 suspends them.
+                Karma measures reliability, not skill. Earn +2 per on-time game and +20 when a friend you referred is approved;
+                late cancellations, no-shows and unpaid games reduce it. Below 20 restricts sign-ups; 0 suspends them.
               </p>
             </div>
             <div>
@@ -232,6 +244,25 @@ export default function ProfilePage() {
                   onCheckedChange={(c) => setWhatsappPref(currentUser.id, 'whatsappMarketingOptIn', c === true)}
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Invite friends */}
+          <Card className="rounded-2xl py-0 shadow-sm">
+            <CardHeader className="p-5 pb-0">
+              <CardTitle className="flex items-center gap-2 font-heading text-base">
+                <UserPlus className="size-4 text-primary" />
+                Invite friends
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 p-5">
+              <p className="text-sm text-muted-foreground">
+                Recommend a friend with their name, WhatsApp number, and level. Referred friends have a higher chance of approval — and you earn +20 karma when they join.
+              </p>
+              <Button className="w-full sm:w-auto" render={<Link href="/app/referrals" />}>
+                <UserPlus className="size-3.5" />
+                Invite a friend
+              </Button>
             </CardContent>
           </Card>
 

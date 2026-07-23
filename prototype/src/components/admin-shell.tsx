@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Inbox, CalendarDays, Users, Tag, Trophy,
-  MessageCircle, Gauge, BarChart3, Settings, Menu, Bell, Layers, Building2,
+  MessageCircle, Gauge, BarChart3, Settings, Menu, Bell, Layers, Building2, UserPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from '@/components/logo';
@@ -18,6 +18,7 @@ import { useMockData } from '@/data/provider';
 const NAV = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/applications', label: 'Applications', icon: Inbox },
+  { href: '/admin/invites', label: 'Invites', icon: UserPlus },
   { href: '/admin/games', label: 'Games', icon: CalendarDays },
   { href: '/admin/formats', label: 'Formats', icon: Layers },
   { href: '/admin/clubs', label: 'Clubs', icon: Building2 },
@@ -32,8 +33,9 @@ const NAV = [
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { applications } = useMockData();
+  const { applications, communityInvites } = useMockData();
   const pendingCount = applications.filter((a) => a.status === 'pending').length;
+  const pendingInvites = communityInvites.filter((i) => i.status === 'pending').length;
 
   const isActive = (href: string) =>
     href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
@@ -57,6 +59,11 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
             {item.href === '/admin/applications' && pendingCount > 0 && (
               <span className="ml-auto rounded-full bg-primary/20 px-1.5 py-0.5 text-[10px] font-bold text-primary">
                 {pendingCount}
+              </span>
+            )}
+            {item.href === '/admin/invites' && pendingInvites > 0 && (
+              <span className="ml-auto rounded-full bg-primary/20 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                {pendingInvites}
               </span>
             )}
             {item.stub && (

@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "export:html": "EXPORT=1 next build && rm -rf ../html-prototype && mkdir -p ../html-prototype && cp -R out/. ../html-prototype/ && cp ../scripts/html-prototype-README.md ../html-prototype/README.md && cd .. && rm -f Padel-Nomads-prototype.zip && zip -r -q Padel-Nomads-prototype.zip html-prototype -x '*.DS_Store'"
+    "export:html": "EXPORT=1 next build && rm -rf ../html-prototype && mkdir -p ../html-prototype && cp -R out/. ../html-prototype/ && cp ../scripts/html-prototype-README.md ../html-prototype/README.md && rm -rf '../html-prototype 2' && mkdir -p '../html-prototype 2' && cp -R ../html-prototype/. '../html-prototype 2/' && cd .. && rm -f Padel-Nomads-prototype.zip && zip -r -q Padel-Nomads-prototype.zip html-prototype -x '*.DS_Store'"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

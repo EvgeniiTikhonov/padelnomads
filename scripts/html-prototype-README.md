@@ -35,7 +35,7 @@ npm install
 npm run export:html
 ```
 
-That rebuilds `prototype/out/`, copies it to `html-prototype/`, and refreshes the share zip at the repo root.
+That rebuilds `prototype/out/`, copies it to `html-prototype/` and `html-prototype 2/`, and refreshes the share zip at the repo root.
 
 ## Note
 

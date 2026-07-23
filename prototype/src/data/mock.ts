@@ -2,7 +2,7 @@ import type {
   User, PlayerPhoneNumber, Application, Game, GameParticipant, GameMatch, GameTeam, Offer, Club,
   AppNotification, KarmaEvent, MessageTemplate, OutboundMessage, InboundMessage,
   ImportBatch, ImportRecord, PlayerMergeLog, BanRecord, RatingAdjustment, ActivityLog,
-  SupportRequest, Level, PreferredSide, Gender, UserStatus, GameFormat, GameLeague, GameStatus,
+  SupportRequest, CommunityInvite, PlayerReferral, Level, PreferredSide, Gender, UserStatus, GameFormat, GameLeague, GameStatus,
   ParticipantStatus, KarmaEventType,
 } from '@/types';
 import { PREFERRED_CLUBS, karmaTierFor } from '@/lib/format';
@@ -45,7 +45,7 @@ const LATE_DEMO = lateDemoSlot(6);
 interface P {
   id: string; name: string; level: Level; side: PreferredSide; gender?: Gender;
   points: number; karma: number; status?: UserStatus; email?: string;
-  source?: 'signup' | 'import'; marketing?: boolean; memberDays?: number;
+  source?: 'signup' | 'import' | 'invite'; marketing?: boolean; memberDays?: number;
   verified?: boolean;   // level verified by Padel Nomads
 }
 const P_LIST: P[] = [
@@ -94,6 +94,7 @@ const P_LIST: P[] = [
   // Duplicate pair (same person, two profiles)
   { id: 'u39', name: 'Katerina Smirnova', level: 'C', side: 'right', gender: 'female', points: 248, karma: 92, email: 'kat.smirnova@example.com', memberDays: 210 },
   { id: 'u40', name: 'Kate Smirnova', level: 'C', side: 'right', gender: 'female', points: 36, karma: 100, status: 'imported', source: 'import', memberDays: 0 },
+  { id: 'u41', name: 'Nina Volkova', level: 'C', side: 'both', gender: 'female', points: 0, karma: 100, status: 'invited', source: 'invite', memberDays: 0 },
 ];
 
 const AVATARS_MALE = [
@@ -149,6 +150,7 @@ function mkUser(p: P): User {
     whatsappMarketingOptInAt: p.marketing ? created : undefined,
     source: p.source ?? 'signup',
     importBatchId: p.source === 'import' ? 'imp1' : undefined,
+    referredByUserId: p.id === 'u41' ? 'u1' : undefined,
     levelVerified: p.verified ?? false,
     levelVerifiedAt: p.verified ? iso(-30) : undefined,
     levelVerifiedBy: p.verified ? 'admin1' : undefined,
@@ -434,7 +436,7 @@ for (const game of seedGames.filter((g) => g.status === 'completed')) {
 
 // ---- applications (~8) ----
 export const seedApplications: Application[] = [
-  { id: 'a1', name: 'Jonas Weber', level: 'C', preferredSide: 'right', gender: 'male', referralSource: 'friend', proofOfSkillFileUrl: 'jonas_match_video.pdf', phoneNumber: '+971529001001', email: 'jonas.w@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'pending', createdAt: iso(-1), updatedAt: iso(-1) },
+  { id: 'a1', name: 'Jonas Weber', level: 'C', preferredSide: 'right', gender: 'male', referralSource: 'friend', referrerPhoneNumber: '+971550000000', referredByUserId: 'u1', playerReferralId: 'pr1', proofOfSkillFileUrl: 'jonas_match_video.pdf', phoneNumber: '+971529001001', email: 'jonas.w@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'pending', createdAt: iso(-1), updatedAt: iso(-1) },
   { id: 'a2', name: 'Priya Sharma', level: 'D', preferredSide: 'both', gender: 'female', referralSource: 'instagram', phoneNumber: '+971529001002', email: 'priya.s@example.com', whatsappOptIn: true, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'pending', createdAt: iso(-2), updatedAt: iso(-2) },
   { id: 'a3', name: 'Khalid Mansour', level: 'C', preferredSide: 'left', gender: 'male', referralSource: 'event', proofOfSkillFileUrl: 'khalid_ranking.png', phoneNumber: '+971555004637', email: 'khalid.m@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, matchedExistingUserId: 'u37', blacklistFlag: false, status: 'pending', createdAt: iso(-2), updatedAt: iso(-2) },
   { id: 'a4', name: 'Boris Lebedev', level: 'B', preferredSide: 'right', gender: 'male', referralSource: 'other', phoneNumber: '+971529001004', whatsappOptIn: true, whatsappMarketingOptIn: false, matchedExistingUserId: 'u36', blacklistFlag: true, status: 'pending', createdAt: iso(-3), updatedAt: iso(-3) },
@@ -442,6 +444,32 @@ export const seedApplications: Application[] = [
   { id: 'a6', name: 'Andrei Popescu', level: 'C', preferredSide: 'both', gender: 'male', referralSource: 'facebook', phoneNumber: '+971529001006', whatsappOptIn: true, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'pending', createdAt: iso(-5), updatedAt: iso(-5) },
   { id: 'a7', name: 'Mia Johnson', level: 'E', preferredSide: 'right', gender: 'female', referralSource: 'friend', phoneNumber: '+971529001007', email: 'mia.j@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'approved', reviewedBy: 'admin1', reviewedAt: iso(-6), createdAt: iso(-8), updatedAt: iso(-6) },
   { id: 'a8', name: 'Stefan Horvat', level: 'C', preferredSide: 'left', gender: 'male', referralSource: 'instagram', phoneNumber: '+971529001008', whatsappOptIn: false, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'rejected', reviewedBy: 'admin1', reviewedAt: iso(-7), createdAt: iso(-10), updatedAt: iso(-7) },
+];
+
+// ---- player referrals (member → friend apply link) ----
+export const seedPlayerReferrals: PlayerReferral[] = [
+  {
+    id: 'pr1',
+    token: 'refdemo1',
+    fromUserId: 'u1',
+    friendName: 'Jonas Weber',
+    friendPhone: '+971529001001',
+    level: 'C',
+    status: 'applied',
+    applicationId: 'a1',
+    whatsappOpenedAt: iso(-2),
+    createdAt: iso(-2),
+  },
+  {
+    id: 'pr2',
+    token: 'refdemo2',
+    fromUserId: 'u1',
+    friendName: 'Tariq Hassan',
+    friendPhone: '+971529001099',
+    level: 'C+',
+    status: 'pending',
+    createdAt: iso(0, 8),
+  },
 ];
 
 // ---- clubs (partner venues) ----
@@ -641,6 +669,26 @@ export const seedSupportRequests: SupportRequest[] = [
     contactPhone: '+971550137113',
     status: 'open',
     createdAt: iso(0, 11),
+  },
+];
+
+// ---- community invites (admin → WhatsApp claim link) ----
+export const seedCommunityInvites: CommunityInvite[] = [
+  {
+    id: 'ci1',
+    token: 'invdemo1',
+    name: 'Nina Volkova',
+    phoneNumber: seedPhones.find((p) => p.userId === 'u41')?.phoneNumber
+      ?? '+971550000041',
+    level: 'C',
+    levelVerified: false,
+    preferredSide: 'both',
+    gender: 'female',
+    referredByUserId: 'u1',
+    createdByAdminId: 'admin1',
+    userId: 'u41',
+    status: 'pending',
+    createdAt: iso(0, 9),
   },
 ];
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import {
-  Inbox, CalendarDays, Radio, Tag, Gauge, Copy, MessageCircle, ArrowRight,
+  Inbox, CalendarDays, Radio, Tag, Gauge, Copy, MessageCircle, ArrowRight, UserPlus,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,9 +11,10 @@ import { visibleGames } from '@/lib/derive';
 import { formatDate } from '@/lib/format';
 
 export default function AdminDashboard() {
-  const { applications, games, offers, users, duplicates, outbound } = useMockData();
+  const { applications, games, offers, users, duplicates, outbound, communityInvites } = useMockData();
 
   const pendingApps = applications.filter((a) => a.status === 'pending');
+  const pendingInvites = communityInvites.filter((i) => i.status === 'pending');
   const upcoming = visibleGames(games).filter((g) => g.status === 'upcoming');
   const live = visibleGames(games).find((g) => g.status === 'live');
   const activeOffers = offers.filter((o) => o.status === 'active');
@@ -25,6 +26,7 @@ export default function AdminDashboard() {
 
   const cards = [
     { href: '/admin/applications', icon: Inbox, label: 'Pending applications', value: pendingApps.length, sub: `${applications.length} total`, tone: 'text-amber-300 bg-amber-500/15' },
+    { href: '/admin/invites', icon: UserPlus, label: 'Pending invites', value: pendingInvites.length, sub: 'preset profiles awaiting claim', tone: 'text-sky-300 bg-sky-500/15' },
     { href: '/admin/games', icon: CalendarDays, label: 'Upcoming games', value: upcoming.length, sub: 'next 2 weeks focus', tone: 'text-blue-300 bg-blue-500/15' },
     { href: live ? `/admin/games/${live.id}` : '/admin/games', icon: Radio, label: 'Live game', value: live ? 1 : 0, sub: live ? `${live.title} · ${live.venue}` : 'none right now', tone: 'text-primary bg-primary/15' },
     { href: '/admin/offers', icon: Tag, label: 'Active offers', value: activeOffers.length, sub: `${offers.length} total`, tone: 'text-violet-300 bg-violet-500/15' },

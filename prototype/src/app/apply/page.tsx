@@ -2,8 +2,8 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, Info } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { ArrowLeft, Upload, Info, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -25,9 +25,24 @@ const REFERRAL_OPTIONS: { value: NonNullable<Application['referralSource']>; lab
   { value: 'event', label: 'Event' },
 ];
 
-export default function ApplyPage() {
-  const { submitApplication, setViewRole, setApplicationStatus } = useMockData();
+function ApplyForm() {
+  const { submitApplication, setViewRole, setApplicationStatus, playerReferrals, users, phones } = useMockData();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const refToken = searchParams.get('ref')?.trim() || '';
+
+  const playerReferral = refToken
+    ? playerReferrals.find((r) => r.token === refToken && r.status === 'pending')
+    : undefined;
+  const referrer = playerReferral
+    ? users.find((u) => u.id === playerReferral.fromUserId)
+    : undefined;
+  const referrerPhone = referrer
+    ? (phones.find((p) => p.userId === referrer.id && p.isPrimary)?.phoneNumber
+      ?? phones.find((p) => p.userId === referrer.id)?.phoneNumber)
+    : undefined;
+
+  const fromInvite = Boolean(playerReferral && referrer);
 
   const [name, setName] = React.useState('');
   const [level, setLevel] = React.useState<Level | null>(null);
@@ -41,6 +56,15 @@ export default function ApplyPage() {
   const [serviceConsent, setServiceConsent] = React.useState(false);
   const [errors, setErrors] = React.useState<string[]>([]);
 
+  React.useEffect(() => {
+    if (!playerReferral) return;
+    setName(playerReferral.friendName);
+    setPhone(playerReferral.friendPhone);
+    setLevel(playerReferral.level);
+    setReferral('friend');
+    if (referrerPhone) setFriendPhone(referrerPhone);
+  }, [playerReferral, referrerPhone]);
+
   const isFriendReferral = referral === 'friend';
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -49,7 +73,7 @@ export default function ApplyPage() {
     if (!level) errs.push('Skill level is required.');
     if (!side) errs.push('Preferred side is required.');
     if (!gender) errs.push('Gender is required.');
-    if (!referral) errs.push('Please tell us how you heard about us.');
+    if (!fromInvite && !referral) errs.push('Please tell us how you heard about us.');
     if (!phone.trim()) errs.push('Phone number is required.');
     else if (!/^\+[1-9]\d{7,14}$/.test(phone.trim())) errs.push('Phone number must be in international E.164 format, e.g. +971501234567.');
     if (friendPhone.trim() && !/^\+[1-9]\d{7,14}$/.test(friendPhone.trim())) {
@@ -57,6 +81,9 @@ export default function ApplyPage() {
     }
     if (email && !/^\S+@\S+\.\S+$/.test(email)) errs.push('Email address is not valid.');
     if (!serviceConsent) errs.push('WhatsApp service messages consent is required (it enables reminders and confirmations).');
+    if (refToken && !playerReferral) {
+      errs.push('This referral link is invalid or already used. Apply without a link, or ask your friend for a new invite.');
+    }
     setErrors(errs);
     if (errs.length > 0) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -66,8 +93,12 @@ export default function ApplyPage() {
       name: name.trim(),
       level: level!, preferredSide: side!,
       gender: gender!,
-      referralSource: referral!,
-      referrerPhoneNumber: isFriendReferral && friendPhone.trim() ? friendPhone.trim() : undefined,
+      referralSource: fromInvite ? 'friend' : referral!,
+      referrerPhoneNumber: fromInvite
+        ? (referrerPhone ?? (friendPhone.trim() || undefined))
+        : (isFriendReferral && friendPhone.trim() ? friendPhone.trim() : undefined),
+      referredByUserId: fromInvite ? playerReferral!.fromUserId : undefined,
+      playerReferralId: fromInvite ? playerReferral!.id : undefined,
       proofOfSkillFileUrl: proofName || undefined,
       phoneNumber: phone.trim(),
       email: email.trim() || undefined,
@@ -97,10 +128,32 @@ export default function ApplyPage() {
           <CardHeader>
             <CardTitle className="font-heading text-xl">Become a Nomad</CardTitle>
             <CardDescription>
-              Tell us about your padel. We review every application to keep games balanced and reliable.
+              {fromInvite
+                ? 'Finish a few details below. Your friend already shared your name, number, and suggested level.'
+                : 'Tell us about your padel. We review every application to keep games balanced and reliable.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {fromInvite && referrer && (
+              <Alert className="mb-5 border-primary/25 bg-primary/[0.06]">
+                <Users className="size-4 text-primary" />
+                <AlertTitle>Invited by {referrer.name}</AlertTitle>
+                <AlertDescription>
+                  Friend referrals are prioritized — you have a higher chance of being approved.
+                  Organizers will see {referrer.name} as your referrer.
+                </AlertDescription>
+              </Alert>
+            )}
+            {refToken && !playerReferral && (
+              <Alert variant="destructive" className="mb-5">
+                <Info className="size-4" />
+                <AlertTitle>Referral link unavailable</AlertTitle>
+                <AlertDescription>
+                  This invite was already used or revoked. You can still apply below without the referral tag.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {errors.length > 0 && (
               <Alert variant="destructive" className="mb-5">
                 <Info className="size-4" />
@@ -114,56 +167,67 @@ export default function ApplyPage() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="space-y-2">
-                <Label>How did you hear about us? <span className="text-destructive">*</span></Label>
-                <Select
-                  value={referral}
-                  onValueChange={(v) => {
-                    const next = v as Application['referralSource'];
-                    setReferral(next);
-                    if (next !== 'friend') setFriendPhone('');
-                  }}
-                >
-                  <SelectTrigger className="h-11 w-full">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {REFERRAL_OPTIONS.map((r) => (
-                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {!fromInvite && (
+                <>
+                  <div className="space-y-2">
+                    <Label>How did you hear about us? <span className="text-destructive">*</span></Label>
+                    <Select
+                      value={referral}
+                      onValueChange={(v) => {
+                        const next = v as Application['referralSource'];
+                        setReferral(next);
+                        if (next !== 'friend') setFriendPhone('');
+                      }}
+                    >
+                      <SelectTrigger className="h-11 w-full">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {REFERRAL_OPTIONS.map((r) => (
+                          <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              {isFriendReferral && (
-                <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-4">
-                  <Label htmlFor="friendPhone">
-                    Friend&apos;s phone number <span className="text-muted-foreground">(optional)</span>
-                  </Label>
-                  <Input
-                    id="friendPhone"
-                    type="tel"
-                    inputMode="tel"
-                    value={friendPhone}
-                    onChange={(e) => setFriendPhone(e.target.value)}
-                    placeholder="+971 50 123 4567"
-                    className="h-11"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Sharing your friend&apos;s number will increase your chances of being approved to the community.
-                  </p>
-                </div>
+                  {isFriendReferral && (
+                    <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-4">
+                      <Label htmlFor="friendPhone">
+                        Friend&apos;s phone number <span className="text-muted-foreground">(optional)</span>
+                      </Label>
+                      <Input
+                        id="friendPhone"
+                        type="tel"
+                        inputMode="tel"
+                        value={friendPhone}
+                        onChange={(e) => setFriendPhone(e.target.value)}
+                        placeholder="+971 50 123 4567"
+                        className="h-11"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Sharing your friend&apos;s number will increase your chances of being approved to the community.
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
 
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
-                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" className="h-11" />
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Your full name"
+                  className="h-11"
+                  readOnly={fromInvite}
+                />
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Skill level <span className="text-destructive">*</span></Label>
-                  <Select value={level} onValueChange={(v) => setLevel(v as Level)}>
+                  <Select value={level ?? undefined} onValueChange={(v) => setLevel(v as Level)}>
                     <SelectTrigger className="h-11 w-full">
                       <SelectValue placeholder="Select level" />
                     </SelectTrigger>
@@ -173,10 +237,13 @@ export default function ApplyPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {fromInvite && (
+                    <p className="text-xs text-muted-foreground">Suggested by your friend — change if needed.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Preferred side <span className="text-destructive">*</span></Label>
-                  <Select value={side} onValueChange={(v) => setSide(v as PreferredSide)}>
+                  <Select value={side ?? undefined} onValueChange={(v) => setSide(v as PreferredSide)}>
                     <SelectTrigger className="h-11 w-full">
                       <SelectValue placeholder="Select side" />
                     </SelectTrigger>
@@ -191,7 +258,7 @@ export default function ApplyPage() {
 
               <div className="space-y-2">
                 <Label>Gender <span className="text-destructive">*</span></Label>
-                <Select value={gender} onValueChange={(v) => setGender(v as Gender)}>
+                <Select value={gender ?? undefined} onValueChange={(v) => setGender(v as Gender)}>
                   <SelectTrigger className="h-11 w-full">
                     <SelectValue placeholder="Select" />
                   </SelectTrigger>
@@ -228,6 +295,7 @@ export default function ApplyPage() {
                   <Input
                     id="phone" type="tel" inputMode="tel" value={phone}
                     onChange={(e) => setPhone(e.target.value)} placeholder="+971 50 123 4567" className="h-11"
+                    readOnly={fromInvite}
                   />
                   <p className="text-xs text-muted-foreground">International format — this is your WhatsApp identifier.</p>
                 </div>
@@ -269,5 +337,17 @@ export default function ApplyPage() {
         </Card>
       </main>
     </div>
+  );
+}
+
+export default function ApplyPage() {
+  return (
+    <React.Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+        Loading application…
+      </div>
+    }>
+      <ApplyForm />
+    </React.Suspense>
   );
 }

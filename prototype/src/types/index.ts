@@ -34,8 +34,10 @@ export interface User {
   whatsappOptIn: boolean; whatsappOptInAt?: string;
   whatsappMarketingOptIn: boolean; whatsappMarketingOptInAt?: string;
   whatsappOptOutAt?: string;
-  source: 'signup' | 'import';
+  source: 'signup' | 'import' | 'invite';
   importBatchId?: string;
+  /** Approving Nomad who referred this player (community invites / friend referrals). */
+  referredByUserId?: string;
   claimedAt?: string;
   karmaBalance: number;      // cached; authoritative = sum of KarmaEvents
   karmaTier: KarmaTier;
@@ -64,6 +66,10 @@ export interface Application {
   referralSource?: 'friend' | 'instagram' | 'facebook' | 'event' | 'search' | 'other';
   /** Phone of the friend who referred the applicant (optional; boosts approval odds). */
   referrerPhoneNumber?: string;
+  /** Linked Nomad when the applicant used a player referral invite link. */
+  referredByUserId?: string;
+  /** Player referral invite that produced this application. */
+  playerReferralId?: string;
   proofOfSkillFileUrl?: string;
   phoneNumber: string; email?: string;
   whatsappOptIn: boolean; whatsappMarketingOptIn: boolean;
@@ -145,6 +151,51 @@ export interface ExternalPartnerInvite {
   createdAt: string;
   /** Partner spot is reserved until this time (24h from invite). */
   expiresAt: string;
+}
+
+/**
+ * Admin community invite: preset profile + claim link (no application approval).
+ * Typically opened via WhatsApp to the invitee's phone.
+ */
+export type CommunityInviteStatus = 'pending' | 'claimed' | 'revoked';
+export interface CommunityInvite {
+  id: string;
+  /** Short token used in `/claim/[token]`. */
+  token: string;
+  name: string;
+  phoneNumber: string;
+  email?: string;
+  level: Level;
+  levelVerified: boolean;
+  preferredSide: PreferredSide;
+  gender?: Gender;
+  /** Current Nomad who referred / recommended this person. */
+  referredByUserId: string;
+  createdByAdminId: string;
+  /** Shell user created at invite time (`status: invited`). */
+  userId: string;
+  status: CommunityInviteStatus;
+  claimedAt?: string;
+  whatsappOpenedAt?: string;
+  createdAt: string;
+}
+
+/**
+ * Player → friend referral: share WhatsApp link; friend finishes the normal application.
+ * Admin sees the resulting application tagged with the referring Nomad.
+ */
+export type PlayerReferralStatus = 'pending' | 'applied' | 'revoked';
+export interface PlayerReferral {
+  id: string;
+  token: string;
+  fromUserId: string;
+  friendName: string;
+  friendPhone: string;
+  level: Level;
+  status: PlayerReferralStatus;
+  applicationId?: string;
+  whatsappOpenedAt?: string;
+  createdAt: string;
 }
 
 // Team allocated to a court when a game goes live. Points are derived from the
@@ -271,7 +322,7 @@ export interface AppNotification {
 
 // PRD §15.17
 export type KarmaEventType =
-  | 'on_time_game' | 'streak_bonus' | 'conduct_award'
+  | 'on_time_game' | 'streak_bonus' | 'conduct_award' | 'successful_referral'
   | 'late_cancellation' | 'very_late_cancellation' | 'no_show' | 'late_arrival'
   | 'non_payment' | 'non_payment_reversal'
   | 'misconduct_minor' | 'misconduct_major' | 'manual_correction' | 'decay_expiry';

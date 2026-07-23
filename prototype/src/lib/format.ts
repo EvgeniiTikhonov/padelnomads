@@ -152,6 +152,49 @@ export function playerWhatsAppUrl(phoneE164: string, message?: string): string {
   return message ? `${base}?text=${encodeURIComponent(message)}` : base;
 }
 
+export function communityInviteClaimUrl(token: string, origin?: string): string {
+  const base = origin
+    ?? (typeof window !== 'undefined' ? window.location.origin : 'https://padelnomads.com');
+  return `${base.replace(/\/$/, '')}/claim/${token}`;
+}
+
+export function communityInviteWhatsAppMessage(opts: {
+  inviteeName: string;
+  referrerName: string;
+  levelLabel: string;
+  claimUrl: string;
+  verified?: boolean;
+}): string {
+  const first = opts.inviteeName.trim().split(/\s+/)[0] || 'there';
+  const verifiedBit = opts.verified ? ' (verified by Padel Nomads)' : '';
+  return (
+    `Hey ${first}! ${opts.referrerName} invited you to Padel Nomads. `
+    + `Your profile is ready at level ${opts.levelLabel}${verifiedBit} — no application needed. `
+    + `Join here: ${opts.claimUrl}`
+  );
+}
+
+export function playerReferralApplyUrl(token: string, origin?: string): string {
+  const base = origin
+    ?? (typeof window !== 'undefined' ? window.location.origin : 'https://padelnomads.com');
+  return `${base.replace(/\/$/, '')}/apply?ref=${encodeURIComponent(token)}`;
+}
+
+export function playerReferralWhatsAppMessage(opts: {
+  friendName: string;
+  referrerName: string;
+  levelLabel: string;
+  applyUrl: string;
+}): string {
+  const first = opts.friendName.trim().split(/\s+/)[0] || 'there';
+  return (
+    `Hey ${first}! ${opts.referrerName} invited you to join Padel Nomads. `
+    + `They suggested level ${opts.levelLabel}. `
+    + `Friend referrals get higher priority for community approval. `
+    + `Finish your short application here: ${opts.applyUrl}`
+  );
+}
+
 export const SUPPORT_CATEGORY_LABELS: Record<SupportRequestCategory, string> = {
   payment: 'Payment',
   booking: 'Booking',
@@ -163,6 +206,7 @@ export const KARMA_EVENT_LABELS: Record<KarmaEventType, string> = {
   on_time_game: 'Played on time',
   streak_bonus: 'Punctuality streak bonus',
   conduct_award: 'Good conduct award',
+  successful_referral: 'Successful friend referral',
   late_cancellation: 'Late cancellation (<12h)',
   very_late_cancellation: 'Very late cancellation (<4h)',
   no_show: 'No-show',

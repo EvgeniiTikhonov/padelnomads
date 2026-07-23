@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
-  Search, FileText, Link2, AlertTriangle, Check, X, MessageCircle,
+  Search, FileText, Link2, AlertTriangle, Check, X, MessageCircle, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
@@ -54,6 +54,9 @@ function ApplicationsPageContent() {
   const selected = applications.find((a) => a.id === selectedId) ?? null;
   const matchedUser = selected?.matchedExistingUserId
     ? users.find((u) => u.id === selected.matchedExistingUserId)
+    : undefined;
+  const referredBy = selected?.referredByUserId
+    ? users.find((u) => u.id === selected.referredByUserId)
     : undefined;
 
   const filtered = applications
@@ -117,6 +120,16 @@ function ApplicationsPageContent() {
               <div className="min-w-0 flex-1">
                 <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
                   {a.name ?? 'Unnamed applicant'}
+                  {a.referredByUserId && (
+                    <Badge variant="secondary" className="gap-1">
+                      <Users className="size-3" />
+                      Referral
+                      {(() => {
+                        const who = users.find((u) => u.id === a.referredByUserId);
+                        return who ? ` · ${who.name}` : '';
+                      })()}
+                    </Badge>
+                  )}
                   {a.matchedExistingUserId && (
                     <Badge variant="secondary" className="gap-1"><Link2 className="size-3" /> Identity match</Badge>
                   )}
@@ -166,6 +179,20 @@ function ApplicationsPageContent() {
                     </span>
                   </div>
                 )}
+                {referredBy && (
+                  <div className="flex items-start gap-2 rounded-xl border border-primary/25 bg-primary/[0.08] p-3 text-sm">
+                    <Users className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <span>
+                      <strong>Player referral</strong> from{' '}
+                      <strong>{referredBy.name}</strong>
+                      {selected.referrerPhoneNumber ? (
+                        <> · <span className="font-mono text-xs">{selected.referrerPhoneNumber}</span></>
+                      ) : null}
+                      . Preferential review — friend of a Nomad (higher approval priority).
+                      Approving awards the referrer +20 karma.
+                    </span>
+                  </div>
+                )}
 
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                   <div><dt className="text-xs text-muted-foreground">Phone</dt><dd className="font-mono">{selected.phoneNumber}</dd></div>
@@ -173,9 +200,22 @@ function ApplicationsPageContent() {
                   <div><dt className="text-xs text-muted-foreground">Skill level</dt><dd>{LEVEL_LABELS[selected.level]}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Preferred side</dt><dd>{SIDE_LABELS[selected.preferredSide]}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Gender</dt><dd>{selected.gender ? GENDER_LABELS[selected.gender] : '—'}</dd></div>
-                  <div><dt className="text-xs text-muted-foreground">Referral</dt><dd className="capitalize">{selected.referralSource ?? '—'}</dd></div>
-                  {selected.referralSource === 'friend' && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Referral</dt>
+                    <dd className="capitalize">
+                      {referredBy
+                        ? `Friend · ${referredBy.name}`
+                        : (selected.referralSource ?? '—')}
+                    </dd>
+                  </div>
+                  {selected.referralSource === 'friend' && !referredBy && (
                     <div><dt className="text-xs text-muted-foreground">Friend&apos;s phone</dt><dd className="font-mono">{selected.referrerPhoneNumber ?? '—'}</dd></div>
+                  )}
+                  {referredBy && (
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Referred by</dt>
+                      <dd>{referredBy.name}</dd>
+                    </div>
                   )}
                   <div><dt className="text-xs text-muted-foreground">Service consent</dt><dd>{selected.whatsappOptIn ? '✅ Yes' : '❌ No'}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Marketing consent</dt><dd>{selected.whatsappMarketingOptIn ? '✅ Yes' : '❌ No'}</dd></div>
