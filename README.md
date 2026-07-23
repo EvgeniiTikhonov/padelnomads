@@ -15,11 +15,18 @@ contains the MVP work split into:
 
 ## Static HTML prototype (easiest to share)
 
+Send friends **`Padel-Nomads-prototype.zip`** (13 MB), or the `html-prototype/` folder.
+
+They unzip and run:
+
 ```bash
-npx serve html-prototype
+cd html-prototype
+npx serve .
 ```
 
-See `html-prototype/README.md` for details.
+Or drag the folder onto [Netlify Drop](https://app.netlify.com/drop) for a public link.
+
+See `html-prototype/README.md` for details. Regenerate with `cd prototype && npm run export:html`.
 
 ## Next.js clickable prototype
 

@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, CalendarDays, Clock, MapPin, Users, Play, Ban, Trash2,
   UserPlus, Search, AlertTriangle, MessageCircle, Trophy, X, Info, ArrowUpDown,
-  ChevronRight, CheckCircle2,
+  ChevronRight, CheckCircle2, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -24,9 +24,10 @@ import {
 } from '@/components/ui/select';
 import { GameStatusBadge, KarmaTierBadge, ParticipantStatusBadge, VerifiedBadge } from '@/components/badges';
 import { GameResults } from '@/components/game-results';
+import { CourtDistribution } from '@/components/court-distribution';
 import { useMockData } from '@/data/provider';
-import { spotsTaken } from '@/lib/derive';
-import { FORMAT_LABELS, LEVEL_LABELS, formatDateLong, initials } from '@/lib/format';
+import { spotsTaken, maxFixedTeams } from '@/lib/derive';
+import { FORMAT_LABELS, LEVEL_LABELS, formatDateLong, initials, isFixedTeamFormat } from '@/lib/format';
 import { FORMAT_CONFIG } from '@/lib/gameFormats';
 import { computeStandings, matchDecided } from '@/lib/scoring';
 import type { Game, GameMatch, GameParticipant, GameTeam, User } from '@/types';
@@ -37,7 +38,7 @@ export default function AdminGameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const {
-    games, participants, teams, matches, users, phones,
+    games, participants, teams, matches, users, phones, externalPartnerInvites,
     setGameStatus, deleteGame, addPlayerToGame, removePlayerFromGame,
     markAttendance, markPayment, startGame, updateMatchScore, generateNextRound, collectScores,
   } = useMockData();
@@ -65,7 +66,10 @@ export default function AdminGameDetailPage() {
     .filter((p) => p.gameId === game.id)
     .sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
   const activeRoster = roster.filter((p) => !['cancelled'].includes(p.status));
-  const taken = spotsTaken(participants, game.id);
+  const taken = spotsTaken(participants, game.id, externalPartnerInvites, game.format);
+  const isFixedTeam = isFixedTeamFormat(game.format);
+  const teamsTaken = isFixedTeam ? taken / 2 : 0;
+  const teamsMax = isFixedTeam ? maxFixedTeams(game.capacity) : 0;
   const userFor = (userId: string) => users.find((u) => u.id === userId);
   const gameTeams = teams.filter((t) => t.gameId === game.id);
   const gameMatches = matches.filter((m) => m.gameId === game.id);
@@ -142,6 +146,11 @@ export default function AdminGameDetailPage() {
           >
             <MessageCircle className="size-4" /> Send list via WhatsApp
           </Button>
+          <Link href={`/admin/games/new?from=${game.id}`}>
+            <Button variant="outline">
+              <Copy className="size-4" /> Duplicate
+            </Button>
+          </Link>
           <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
             <Trash2 className="size-4" />
           </Button>
@@ -153,7 +162,12 @@ export default function AdminGameDetailPage() {
           <span className="flex items-center gap-1.5"><CalendarDays className="size-4 text-primary" /> {formatDateLong(game.date)}</span>
           <span className="flex items-center gap-1.5"><Clock className="size-4 text-primary" /> {game.startTime}–{game.endTime}</span>
           <span className="flex items-center gap-1.5"><MapPin className="size-4 text-primary" /> {game.venue}</span>
-          <span className="flex items-center gap-1.5"><Users className="size-4 text-primary" /> {taken}/{game.capacity} · {game.courts} courts</span>
+          <span className="flex items-center gap-1.5">
+            <Users className="size-4 text-primary" />
+            {isFixedTeam
+              ? `${teamsTaken}/${teamsMax} teams · ${game.courts} courts`
+              : `${taken}/${game.capacity} · ${game.courts} courts`}
+          </span>
           <Badge variant="secondary">{LEVEL_LABELS[game.level]}</Badge>
           {game.price != null && <Badge variant="outline">AED {game.price}</Badge>}
         </CardContent>
@@ -163,6 +177,9 @@ export default function AdminGameDetailPage() {
       {(game.status === 'upcoming' || (game.status === 'live' && step === 'attendance')) && (
         <FormatRulesCard format={game.format} />
       )}
+
+      {/* Court distribution — seed the courts before the game starts */}
+      {game.status === 'upcoming' && <CourtDistribution game={game} />}
 
       {/* Live step 1: confirm attendance */}
       {game.status === 'live' && step === 'attendance' && (
@@ -212,7 +229,9 @@ export default function AdminGameDetailPage() {
         <Card className="rounded-2xl py-0 shadow-sm">
           <CardHeader className="flex-row items-center justify-between p-4 pb-0">
             <CardTitle className="font-heading text-base">
-              Players ({activeRoster.filter((p) => p.status !== 'waitlisted').length}/{game.capacity})
+              {isFixedTeam
+                ? `Teams (${teamsTaken}/${teamsMax}) · ${activeRoster.filter((p) => p.status !== 'waitlisted').length} players`
+                : `Players (${activeRoster.filter((p) => p.status !== 'waitlisted').length}/${game.capacity})`}
             </CardTitle>
             {game.status !== 'completed' && game.status !== 'cancelled' && (
               <Button size="sm" onClick={() => setAddOpen(true)}>

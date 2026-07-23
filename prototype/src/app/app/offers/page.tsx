@@ -1,27 +1,160 @@
 'use client';
 
 import * as React from 'react';
-import { Copy, ExternalLink, Tag, Store } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { Check, Copy, ExternalLink, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
 import { useMockData } from '@/data/provider';
-import { formatDate } from '@/lib/format';
+import { formatDate, initials } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import type { Offer } from '@/types';
 
-export default function OffersPage() {
+function offerLogo(offer: Offer): string | undefined {
+  return offer.logoUrl || offer.imageUrl;
+}
+
+function PartnerLogo({ offer, size = 'md' }: { offer: Offer; size?: 'sm' | 'md' | 'lg' }) {
+  const src = offerLogo(offer);
+  const box = size === 'lg' ? 'size-16' : size === 'sm' ? 'size-10' : 'size-14';
+  const text = size === 'lg' ? 'text-lg' : size === 'sm' ? 'text-xs' : 'text-sm';
+
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={`${offer.partnerName} logo`}
+        className={cn(box, 'shrink-0 rounded-xl border border-white/10 bg-white/5 object-cover')}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        box,
+        'flex shrink-0 items-center justify-center rounded-xl border border-white/10 bg-primary/10 font-heading font-bold text-primary',
+        text,
+      )}
+      aria-hidden
+    >
+      {initials(offer.partnerName)}
+    </div>
+  );
+}
+
+function PromoCodeField({ code }: { code: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const copy = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard?.writeText(code).catch(() => {});
+    setCopied(true);
+    toast.success('Promo code copied', { description: code });
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Promo code</p>
+        <p className="truncate font-mono text-sm font-bold tracking-wider">{code}</p>
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        className="h-8 shrink-0"
+        onClick={copy}
+      >
+        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+        {copied ? 'Copied' : 'Copy'}
+      </Button>
+    </div>
+  );
+}
+
+function OfferLinks({ offer }: { offer: Offer }) {
+  if (!offer.link && !offer.instagramUrl) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {offer.link && (
+        <a
+          href={offer.link}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/15 px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-white/35 hover:text-foreground"
+        >
+          <ExternalLink className="size-3.5" /> Website
+        </a>
+      )}
+      {offer.instagramUrl && (
+        <a
+          href={offer.instagramUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/15 px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-white/35 hover:text-foreground"
+        >
+          <svg viewBox="0 0 24 24" className="size-3.5 fill-none stroke-current" strokeWidth="2" aria-hidden>
+            <rect x="2" y="2" width="20" height="20" rx="5" />
+            <circle cx="12" cy="12" r="4" />
+            <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+          </svg>
+          Instagram
+        </a>
+      )}
+    </div>
+  );
+}
+
+export function OfferCard({ offer, highlighted = false }: { offer: Offer; highlighted?: boolean }) {
+  return (
+    <Card
+      id={`offer-${offer.id}`}
+      className={cn(
+        'h-full rounded-2xl border-white/10 bg-card py-0 shadow-none transition-shadow',
+        highlighted && 'ring-2 ring-primary/70',
+      )}
+    >
+      <CardContent className="flex h-full flex-col gap-3.5 p-4">
+        <div className="flex items-start gap-3">
+          <PartnerLogo offer={offer} />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-muted-foreground">{offer.partnerName}</p>
+            <h3 className="font-heading text-base leading-snug font-semibold">{offer.title}</h3>
+          </div>
+        </div>
+
+        <p className="text-sm leading-relaxed text-muted-foreground">{offer.description}</p>
+
+        {offer.promoCode && <PromoCodeField code={offer.promoCode} />}
+
+        <OfferLinks offer={offer} />
+
+        <p className="mt-auto pt-1 text-[11px] text-muted-foreground">
+          Valid until {formatDate(offer.endDate)}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OffersPageContent() {
   const { offers } = useMockData();
-  const [selected, setSelected] = React.useState<Offer | null>(null);
+  const searchParams = useSearchParams();
+  const focusOfferId = searchParams.get('offer');
   const active = offers.filter((o) => o.status === 'active');
 
-  const copyCode = (code: string) => {
-    navigator.clipboard?.writeText(code).catch(() => {});
-    toast.success('Promo code copied', { description: code });
-  };
+  React.useEffect(() => {
+    if (!focusOfferId) return;
+    const el = document.getElementById(`offer-${focusOfferId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusOfferId, active.length]);
 
   return (
     <div className="space-y-4">
@@ -39,62 +172,18 @@ export default function OffersPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {active.map((o) => (
-            <button key={o.id} onClick={() => setSelected(o)} className="text-left">
-              <Card className="h-full rounded-2xl py-0 shadow-sm transition-shadow hover:shadow-md">
-                <CardContent className="flex h-full flex-col gap-3 p-4">
-                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                    <Store className="size-3.5" /> {o.partnerName}
-                  </div>
-                  <h3 className="font-heading font-semibold">{o.title}</h3>
-                  <p className="line-clamp-2 text-sm text-muted-foreground">{o.description}</p>
-                  <div className="mt-auto flex flex-wrap items-center gap-1.5">
-                    {o.promoCode && (
-                      <Badge variant="secondary" className="font-mono">{o.promoCode}</Badge>
-                    )}
-                    <Badge variant="outline">Until {formatDate(o.endDate)}</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            </button>
+            <OfferCard key={o.id} offer={o} highlighted={o.id === focusOfferId} />
           ))}
         </div>
       )}
-
-      <Dialog open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent>
-          {selected && (
-            <>
-              <DialogHeader>
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <Store className="size-3.5" /> {selected.partnerName}
-                </div>
-                <DialogTitle className="font-heading text-lg">{selected.title}</DialogTitle>
-                <DialogDescription>{selected.description}</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3">
-                <p className="text-xs text-muted-foreground">
-                  Valid {formatDate(selected.startDate)} – {formatDate(selected.endDate)}
-                </p>
-                {selected.promoCode && (
-                  <div className="flex items-center justify-between gap-2 rounded-xl border border-dashed bg-muted/50 p-3">
-                    <span className="font-mono text-base font-bold tracking-wider">{selected.promoCode}</span>
-                    <Button size="sm" onClick={() => copyCode(selected.promoCode!)}>
-                      <Copy className="size-3.5" /> Copy code
-                    </Button>
-                  </div>
-                )}
-                {selected.link && (
-                  <a href={selected.link} target="_blank" rel="noreferrer" className="block">
-                    <Button variant="outline" className="w-full">
-                      <ExternalLink className="size-4" /> Open partner website
-                    </Button>
-                  </a>
-                )}
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
+  );
+}
+
+export default function OffersPage() {
+  return (
+    <React.Suspense fallback={<div className="text-sm text-muted-foreground">Loading offers…</div>}>
+      <OffersPageContent />
+    </React.Suspense>
   );
 }

@@ -27,8 +27,16 @@ const PRESETS: Preset[] = [
   { key: 'admin', label: 'Admin', role: 'admin', appStatus: 'approved', href: '/admin' },
 ];
 
+/** Demo players useful for pair-invite / multi-account flows. */
+const DEMO_PLAYERS = [
+  { id: 'u1', label: 'Alex Ivanov' },
+  { id: 'u6', label: 'Laura Sanchez' },
+  { id: 'u10', label: 'Anna Kowalska' },
+  { id: 'u2', label: 'Sofia Petrova' },
+];
+
 export function RoleSwitcher({ tone = 'dark' }: { tone?: 'light' | 'dark' }) {
-  const { session, setViewRole, setApplicationStatus, currentUser } = useMockData();
+  const { session, setViewRole, setApplicationStatus, setCurrentUserId, currentUser, users } = useMockData();
   const router = useRouter();
 
   const active = PRESETS.find(
@@ -66,6 +74,8 @@ export function RoleSwitcher({ tone = 'dark' }: { tone?: 'light' | 'dark' }) {
             onClick={() => {
               setViewRole(p.role);
               setApplicationStatus(p.appStatus);
+              if (p.role === 'admin') setCurrentUserId('admin1');
+              else if (p.role === 'player' && p.appStatus === 'approved') setCurrentUserId('u1');
               router.push(p.href);
             }}
             className={p.key === active.key ? 'bg-accent' : undefined}
@@ -76,6 +86,27 @@ export function RoleSwitcher({ tone = 'dark' }: { tone?: 'light' | 'dark' }) {
             )}
           </DropdownMenuItem>
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Impersonate player</DropdownMenuLabel>
+        </DropdownMenuGroup>
+        {DEMO_PLAYERS.map((p) => {
+          const u = users.find((x) => x.id === p.id);
+          if (!u) return null;
+          return (
+            <DropdownMenuItem
+              key={p.id}
+              onClick={() => {
+                setCurrentUserId(p.id);
+                setViewRole('player');
+                setApplicationStatus('approved');
+              }}
+              className={session.currentUserId === p.id ? 'bg-accent' : undefined}
+            >
+              {p.label}
+            </DropdownMenuItem>
+          );
+        })}
         <DropdownMenuSeparator />
         <div className="px-2 py-1.5 text-xs text-muted-foreground">
           Replaces real auth for this clickable demo.

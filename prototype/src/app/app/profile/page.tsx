@@ -15,8 +15,12 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { KarmaTierBadge, VerifiedBadge } from '@/components/badges';
+import {
+  PartnersCard, PlayerStatsCard, PreferencesCard,
+} from '@/components/player-stats';
 import { useMockData } from '@/data/provider';
 import { leaderboard, upcomingGamesNextTwoWeeks } from '@/lib/derive';
+import { playerMatchRecords } from '@/lib/playerStats';
 import {
   LEVEL_LABELS, SIDE_LABELS, GENDER_LABELS, KARMA_EVENT_LABELS,
   formatDate, formatDateTime, initials,
@@ -24,8 +28,8 @@ import {
 
 export default function ProfilePage() {
   const {
-    users, games, participants, phones, karmaEvents, currentUser,
-    addPhoneNumber, setWhatsappPref,
+    users, games, participants, teams, matches, phones, karmaEvents, currentUser,
+    addPhoneNumber, setWhatsappPref, setPlayerPreferences,
   } = useMockData();
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -48,6 +52,7 @@ export default function ProfilePage() {
   const myUpcoming = upcomingGamesNextTwoWeeks(games).filter((g) =>
     participants.some((p) => p.gameId === g.id && p.userId === currentUser.id && p.status !== 'cancelled'));
   const lastGame = myPast[0];
+  const myRecords = playerMatchRecords(currentUser.id, games, teams, matches);
 
   const gameTitle = (gameId?: string) => games.find((g) => g.id === gameId)?.title;
 
@@ -108,6 +113,25 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* Playtomic-style stats, preferences, partners */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <PlayerStatsCard records={myRecords} />
+        <div className="space-y-5">
+          <PreferencesCard
+            user={currentUser}
+            onUpdate={(patch) => setPlayerPreferences(currentUser.id, patch)}
+          />
+        </div>
+        <PartnersCard
+          playerId={currentUser.id}
+          users={users}
+          games={games}
+          teams={teams}
+          matches={matches}
+          linkPlayers
+        />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">

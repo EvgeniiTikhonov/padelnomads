@@ -19,10 +19,11 @@ import { useMockData } from '@/data/provider';
 import { LEVELS, LEVEL_LABELS, SIDE_LABELS, GENDER_LABELS } from '@/lib/format';
 import type { Level, PreferredSide, Gender, Application } from '@/types';
 
-const REFERRAL_LABELS: Record<NonNullable<Application['referralSource']>, string> = {
-  friend: 'Friend', instagram: 'Instagram', facebook: 'Facebook',
-  event: 'Event', search: 'Search', other: 'Other',
-};
+const REFERRAL_OPTIONS: { value: NonNullable<Application['referralSource']>; label: string }[] = [
+  { value: 'friend', label: 'Friend' },
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'event', label: 'Event' },
+];
 
 export default function ApplyPage() {
   const { submitApplication, setViewRole, setApplicationStatus } = useMockData();
@@ -33,20 +34,27 @@ export default function ApplyPage() {
   const [side, setSide] = React.useState<PreferredSide | null>(null);
   const [gender, setGender] = React.useState<Gender | null>(null);
   const [referral, setReferral] = React.useState<Application['referralSource'] | null>(null);
+  const [friendPhone, setFriendPhone] = React.useState('');
   const [proofName, setProofName] = React.useState('');
   const [phone, setPhone] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [serviceConsent, setServiceConsent] = React.useState(false);
-  const [marketingConsent, setMarketingConsent] = React.useState(false);
   const [errors, setErrors] = React.useState<string[]>([]);
+
+  const isFriendReferral = referral === 'friend';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const errs: string[] = [];
     if (!level) errs.push('Skill level is required.');
     if (!side) errs.push('Preferred side is required.');
+    if (!gender) errs.push('Gender is required.');
+    if (!referral) errs.push('Please tell us how you heard about us.');
     if (!phone.trim()) errs.push('Phone number is required.');
     else if (!/^\+[1-9]\d{7,14}$/.test(phone.trim())) errs.push('Phone number must be in international E.164 format, e.g. +971501234567.');
+    if (friendPhone.trim() && !/^\+[1-9]\d{7,14}$/.test(friendPhone.trim())) {
+      errs.push("Friend's phone number must be in international E.164 format, e.g. +971501234567.");
+    }
     if (email && !/^\S+@\S+\.\S+$/.test(email)) errs.push('Email address is not valid.');
     if (!serviceConsent) errs.push('WhatsApp service messages consent is required (it enables reminders and confirmations).');
     setErrors(errs);
@@ -57,13 +65,14 @@ export default function ApplyPage() {
     submitApplication({
       name: name.trim(),
       level: level!, preferredSide: side!,
-      gender: gender ?? undefined,
-      referralSource: referral ?? undefined,
+      gender: gender!,
+      referralSource: referral!,
+      referrerPhoneNumber: isFriendReferral && friendPhone.trim() ? friendPhone.trim() : undefined,
       proofOfSkillFileUrl: proofName || undefined,
       phoneNumber: phone.trim(),
       email: email.trim() || undefined,
       whatsappOptIn: serviceConsent,
-      whatsappMarketingOptIn: marketingConsent,
+      whatsappMarketingOptIn: false,
     });
     setViewRole('player');
     setApplicationStatus('pending');
@@ -106,6 +115,47 @@ export default function ApplyPage() {
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
+                <Label>How did you hear about us? <span className="text-destructive">*</span></Label>
+                <Select
+                  value={referral}
+                  onValueChange={(v) => {
+                    const next = v as Application['referralSource'];
+                    setReferral(next);
+                    if (next !== 'friend') setFriendPhone('');
+                  }}
+                >
+                  <SelectTrigger className="h-11 w-full">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REFERRAL_OPTIONS.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {isFriendReferral && (
+                <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-4">
+                  <Label htmlFor="friendPhone">
+                    Friend&apos;s phone number <span className="text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Input
+                    id="friendPhone"
+                    type="tel"
+                    inputMode="tel"
+                    value={friendPhone}
+                    onChange={(e) => setFriendPhone(e.target.value)}
+                    placeholder="+971 50 123 4567"
+                    className="h-11"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Sharing your friend&apos;s number will increase your chances of being approved to the community.
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
                 <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" className="h-11" />
               </div>
@@ -139,33 +189,18 @@ export default function ApplyPage() {
                 </div>
               </div>
 
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Gender <span className="text-muted-foreground">(optional)</span></Label>
-                  <Select value={gender} onValueChange={(v) => setGender(v as Gender)}>
-                    <SelectTrigger className="h-11 w-full">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(GENDER_LABELS) as Gender[]).map((g) => (
-                        <SelectItem key={g} value={g}>{GENDER_LABELS[g]}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>How did you hear about us? <span className="text-muted-foreground">(optional)</span></Label>
-                  <Select value={referral} onValueChange={(v) => setReferral(v as Application['referralSource'])}>
-                    <SelectTrigger className="h-11 w-full">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(REFERRAL_LABELS) as NonNullable<Application['referralSource']>[]).map((r) => (
-                        <SelectItem key={r} value={r}>{REFERRAL_LABELS[r]}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label>Gender <span className="text-destructive">*</span></Label>
+                <Select value={gender} onValueChange={(v) => setGender(v as Gender)}>
+                  <SelectTrigger className="h-11 w-full">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(GENDER_LABELS) as Gender[]).map((g) => (
+                      <SelectItem key={g} value={g}>{GENDER_LABELS[g]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -174,13 +209,17 @@ export default function ApplyPage() {
                   htmlFor="proof"
                   className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-input px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
                 >
-                  <Upload className="size-4" />
-                  {proofName || 'Upload a match video screenshot, ranking, or coach reference'}
+                  <Upload className="size-4 shrink-0" />
+                  {proofName || 'Upload proof of skill'}
                 </label>
                 <input
                   id="proof" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" className="sr-only"
                   onChange={(e) => setProofName(e.target.files?.[0]?.name ?? '')}
                 />
+                <p className="text-xs text-muted-foreground">
+                  We accept screenshots from club apps, WhatsApp groups of clubs with your level specified,
+                  or a screenshot of your Playtomic / WeCourts profile.
+                </p>
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
@@ -216,24 +255,9 @@ export default function ApplyPage() {
                     </span>
                   </span>
                 </label>
-                <label className="flex items-start gap-3">
-                  <Checkbox
-                    checked={marketingConsent}
-                    onCheckedChange={(c) => setMarketingConsent(c === true)}
-                    className="mt-0.5"
-                  />
-                  <span className="text-sm">
-                    <strong>WhatsApp offers &amp; promotions</strong> <span className="text-muted-foreground">(optional)</span>
-                    <br />
-                    <span className="text-muted-foreground">
-                      I consent to receive partner offers and promotions on WhatsApp.
-                    </span>
-                  </span>
-                </label>
                 <p className="text-xs text-muted-foreground">
-                  Meta policy requires opt-in before we can send you business-initiated WhatsApp messages;
-                  marketing messages require explicit consent. Both consents are recorded with a timestamp,
-                  and you can opt out at any time (e.g. by replying STOP).
+                  Meta policy requires opt-in before we can send you business-initiated WhatsApp messages.
+                  Consent is recorded with a timestamp, and you can opt out at any time (e.g. by replying STOP).
                 </p>
               </div>
 

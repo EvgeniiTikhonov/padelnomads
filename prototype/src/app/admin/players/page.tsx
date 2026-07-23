@@ -23,15 +23,15 @@ import {
 import { KarmaTierBadge, UserStatusBadge, VerifiedBadge } from '@/components/badges';
 import { useMockData } from '@/data/provider';
 import {
-  LEVEL_LABELS, KARMA_EVENT_LABELS, USER_STATUS_LABELS, formatDateTime, formatDate, initials,
+  LEVEL_LABELS, LEVELS, KARMA_EVENT_LABELS, USER_STATUS_LABELS, formatDateTime, formatDate, initials,
 } from '@/lib/format';
-import type { User, UserStatus } from '@/types';
+import type { Level, User, UserStatus } from '@/types';
 
 export default function PlayersPage() {
   const {
     users, phones, participants, games, karmaEvents, activityLogs, banRecords,
     ratingAdjustments, mergeLogs, duplicates, importBatches, importRecords,
-    banPlayer, unbanPlayer, mergeDuplicate, dismissDuplicate, addKarmaEvent, setLevelVerified,
+    banPlayer, unbanPlayer, mergeDuplicate, dismissDuplicate, addKarmaEvent, setLevelVerified, setPlayerLevel,
   } = useMockData();
 
   const [query, setQuery] = React.useState('');
@@ -416,35 +416,60 @@ export default function PlayersPage() {
                   </ul>
                 </section>
 
-                {/* Level verification */}
+                {/* Level */}
                 <section className="border-t pt-4">
                   <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
-                    <BadgeCheck className="size-3.5 text-blue-500" /> Level verification
+                    <BadgeCheck className="size-3.5 text-blue-500" /> Level
                   </h3>
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
-                    <div className="text-sm">
-                      {selected.levelVerified ? (
-                        <p className="flex items-center gap-1.5 font-medium">
-                          Level {selected.level} verified <VerifiedBadge />
-                        </p>
-                      ) : (
-                        <p className="font-medium">Level {selected.level} — not verified</p>
-                      )}
+                  <div className="space-y-3 rounded-xl border p-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="player-level">Playing level</Label>
+                      <Select
+                        value={selected.level}
+                        onValueChange={(v) => {
+                          if (v && v !== selected.level) setPlayerLevel(selected.id, v as Level);
+                        }}
+                      >
+                        <SelectTrigger id="player-level" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LEVELS.map((lvl) => (
+                            <SelectItem key={lvl} value={lvl}>
+                              {LEVEL_LABELS[lvl]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <p className="text-xs text-muted-foreground">
-                        {selected.levelVerified
-                          ? `Verified ${selected.levelVerifiedAt ? formatDateTime(selected.levelVerifiedAt) : ''} by Padel Nomads`
-                          : 'The blue verified badge confirms this level was assessed by Padel Nomads.'}
+                        Changing level clears verification — re-verify once the new level has been assessed.
                       </p>
                     </div>
-                    {selected.levelVerified ? (
-                      <Button size="sm" variant="outline" onClick={() => setLevelVerified(selected.id, false)}>
-                        Remove verification
-                      </Button>
-                    ) : (
-                      <Button size="sm" className="bg-blue-500 text-white hover:bg-blue-600" onClick={() => setLevelVerified(selected.id, true)}>
-                        <BadgeCheck className="size-3.5" /> Verify level
-                      </Button>
-                    )}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+                      <div className="text-sm">
+                        {selected.levelVerified ? (
+                          <p className="flex items-center gap-1.5 font-medium">
+                            Level {selected.level} verified <VerifiedBadge />
+                          </p>
+                        ) : (
+                          <p className="font-medium">Level {selected.level} — not verified</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          {selected.levelVerified
+                            ? `Verified ${selected.levelVerifiedAt ? formatDateTime(selected.levelVerifiedAt) : ''} by Padel Nomads`
+                            : 'The blue verified badge confirms this level was assessed by Padel Nomads.'}
+                        </p>
+                      </div>
+                      {selected.levelVerified ? (
+                        <Button size="sm" variant="outline" onClick={() => setLevelVerified(selected.id, false)}>
+                          Remove verification
+                        </Button>
+                      ) : (
+                        <Button size="sm" className="bg-blue-500 text-white hover:bg-blue-600" onClick={() => setLevelVerified(selected.id, true)}>
+                          <BadgeCheck className="size-3.5" /> Verify level
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </section>
 

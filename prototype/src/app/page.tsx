@@ -11,8 +11,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { useMockData } from '@/data/provider';
-import { spotsTaken, upcomingGamesNextTwoWeeks } from '@/lib/derive';
-import { LEVELS, LEVEL_LABELS } from '@/lib/format';
+import { spotsTaken, upcomingGamesNextTwoWeeks, maxFixedTeams } from '@/lib/derive';
+import { LEVELS, LEVEL_LABELS, isFixedTeamFormat } from '@/lib/format';
 import type { Game, GameFormat, Level } from '@/types';
 
 /* Brand tokens from the landing design system */
@@ -327,9 +327,11 @@ function eventTint(game: Game): string {
 }
 
 function EventCard({ game, index }: { game: Game; index: number }) {
-  const { participants, users } = useMockData();
-  const taken = spotsTaken(participants, game.id);
+  const { participants, users, externalPartnerInvites } = useMockData();
+  const taken = spotsTaken(participants, game.id, externalPartnerInvites, game.format);
   const spotsLeft = Math.max(0, game.capacity - taken);
+  const fixed = isFixedTeamFormat(game.format);
+  const teamsLeft = fixed ? Math.max(0, maxFixedTeams(game.capacity) - taken / 2) : 0;
   const roster = participants.filter(
     (p) => p.gameId === game.id && (p.status === 'confirmed' || p.status === 'registered'),
   );
@@ -378,7 +380,9 @@ function EventCard({ game, index }: { game: Game; index: number }) {
             {!live && !finished && (
               <>
                 <span className="rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-[#c6e03a] backdrop-blur-sm">
-                  {spotsLeft > 0 ? `${spotsLeft} spots available` : 'Full — waitlist open'}
+                  {fixed
+                    ? (teamsLeft > 0 ? `${teamsLeft} team${teamsLeft === 1 ? '' : 's'} available` : 'Full — waitlist open')
+                    : (spotsLeft > 0 ? `${spotsLeft} spots available` : 'Full — waitlist open')}
                 </span>
                 <span className="flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1 text-xs text-white/70 backdrop-blur-sm">
                   <Clock className="size-3" /> {startsInLabel(game)}
@@ -464,11 +468,35 @@ function EventCard({ game, index }: { game: Game; index: number }) {
 
 function EventsSection() {
   const { games } = useMockData();
+  const horizon = React.useMemo(() => upcomingGamesNextTwoWeeks(games), [games]);
+
+  const availableFormats = React.useMemo(() => {
+    const present = new Set(horizon.map((g) => categoryOf(g.format)));
+    return EVENT_FILTERS.filter((f) => f.key === 'all' || present.has(f.key));
+  }, [horizon]);
+
+  const availableLevels = React.useMemo(() => {
+    const present = new Set(horizon.map((g) => g.level));
+    return LEVEL_FILTERS.filter((f) => f.key === 'all' || present.has(f.key as Level | 'mixed'));
+  }, [horizon]);
+
   const [formatFilter, setFormatFilter] = React.useState<EventFilter>('all');
-  const [levelFilter, setLevelFilter] = React.useState<LevelFilter>('all');
+  // null = untouched → trigger shows the "Level" placeholder
+  const [levelFilter, setLevelFilter] = React.useState<LevelFilter | null>(null);
   const [selectedDay, setSelectedDay] = React.useState(() => localISODate());
 
-  const horizon = React.useMemo(() => upcomingGamesNextTwoWeeks(games), [games]);
+  // Clear format/level picks that no longer exist among scheduled games.
+  const facetSig = `${availableFormats.map((f) => f.key).join(',')}|${availableLevels.map((f) => f.key).join(',')}`;
+  const [syncedFacetSig, setSyncedFacetSig] = React.useState(facetSig);
+  if (syncedFacetSig !== facetSig) {
+    setSyncedFacetSig(facetSig);
+    if (formatFilter !== 'all' && !availableFormats.some((f) => f.key === formatFilter)) {
+      setFormatFilter('all');
+    }
+    if (levelFilter && levelFilter !== 'all' && !availableLevels.some((f) => f.key === levelFilter)) {
+      setLevelFilter('all');
+    }
+  }
 
   const days = React.useMemo(
     () => Array.from({ length: 14 }, (_, i) => addDays(new Date(), i)),
@@ -478,7 +506,7 @@ function EventsSection() {
   const filteredHorizon = React.useMemo(() => {
     return horizon.filter((g) => {
       if (formatFilter !== 'all' && categoryOf(g.format) !== formatFilter) return false;
-      if (levelFilter !== 'all' && g.level !== levelFilter) return false;
+      if (levelFilter && levelFilter !== 'all' && g.level !== levelFilter) return false;
       return true;
     });
   }, [horizon, formatFilter, levelFilter]);
@@ -493,11 +521,11 @@ function EventsSection() {
     [filteredHorizon],
   );
 
-  React.useEffect(() => {
-    if (gameDates.has(selectedDay)) return;
+  // Keep the calendar on a day that still has games after filters change.
+  if (!gameDates.has(selectedDay)) {
     const next = days.find((d) => gameDates.has(localISODate(d)));
     if (next) setSelectedDay(localISODate(next));
-  }, [gameDates, selectedDay, days]);
+  }
 
   const startLabel = days[0].toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   const endLabel = days[13].toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -505,7 +533,7 @@ function EventsSection() {
 
   const emptyFormat = EVENT_FILTERS.find((f) => f.key === formatFilter)?.label.toLowerCase();
   const emptyLevel =
-    levelFilter === 'all'
+    !levelFilter || levelFilter === 'all'
       ? ''
       : levelFilter === 'mixed'
         ? 'mixed-level'
@@ -525,7 +553,7 @@ function EventsSection() {
 
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2">
-          {EVENT_FILTERS.map((f) => (
+          {availableFormats.map((f) => (
             <button
               key={f.key}
               type="button"
@@ -543,20 +571,20 @@ function EventsSection() {
           ))}
         </div>
 
-        <Select value={levelFilter} onValueChange={(v) => setLevelFilter(v as LevelFilter)}>
+        <Select value={levelFilter ?? undefined} onValueChange={(v) => setLevelFilter(v as LevelFilter)}>
           <SelectTrigger
             className={cn(
               'h-9 w-full min-w-[10.5rem] rounded-full border-white/20 bg-transparent px-3.5 text-xs font-medium text-white shadow-none sm:w-auto',
               'hover:border-white/45 hover:bg-white/5',
               'focus-visible:border-[#c6e03a] focus-visible:ring-[#c6e03a]/30',
               '[&_svg]:text-white/50',
-              levelFilter !== 'all' && 'border-[#c6e03a]/60 text-[#c6e03a] [&_svg]:text-[#c6e03a]',
+              levelFilter && levelFilter !== 'all' && 'border-[#c6e03a]/60 text-[#c6e03a] [&_svg]:text-[#c6e03a]',
             )}
           >
-            <SelectValue placeholder="All levels" />
+            <SelectValue placeholder="Level" />
           </SelectTrigger>
           <SelectContent className="border-white/10 bg-[#161616] text-white">
-            {LEVEL_FILTERS.map((f) => (
+            {availableLevels.map((f) => (
               <SelectItem
                 key={f.key}
                 value={f.key}

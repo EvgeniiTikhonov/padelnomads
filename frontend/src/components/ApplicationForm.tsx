@@ -56,12 +56,8 @@ export default function ApplicationForm() {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!values.name || !values.level || !values.preferredSide || !values.phoneNumber) {
+    if (!values.name || !values.level || !values.preferredSide || !values.phoneNumber || !values.gender || !values.referralSource) {
       setError('Please complete all required fields.');
-      return;
-    }
-    if (isFriendReferral && !values.referrerPhoneNumber) {
-      setError("Please add your friend's phone number.");
       return;
     }
     const application = actions.submitApplication({
@@ -107,7 +103,7 @@ export default function ApplicationForm() {
   return (
     <form onSubmit={handleSubmit} className="border border-brand-black/10 bg-white p-8 sm:p-10">
       <div className="space-y-8">
-        <Field label="How did you hear about us?">
+        <Field label="How did you hear about us?" required>
           <select
             className="form-control"
             value={values.referralSource}
@@ -125,8 +121,7 @@ export default function ApplicationForm() {
         {isFriendReferral && (
           <Field
             label="Friend's phone number"
-            required
-            hint="Share the phone number of the friend who referred you."
+            hint="Optional. Sharing your friend's number will increase your chances of being approved to the community."
           >
             <input
               className="form-control"
@@ -193,7 +188,7 @@ export default function ApplicationForm() {
           </select>
         </Field>
 
-        <Field label="Gender" hint="Optional. Helps us balance games and events.">
+        <Field label="Gender" required hint="Helps us balance games and events.">
           <select className="form-control" value={values.gender} onChange={(e) => set('gender', e.target.value)}>
             <option value="">Select…</option>
             {GENDER_OPTIONS.map((o) => (
@@ -206,7 +201,7 @@ export default function ApplicationForm() {
 
         <Field
           label="Proof of skill"
-          hint="Optional. Upload a screenshot, ranking, or match result (JPEG, PNG, WebP, or PDF)."
+          hint="Optional. We accept screenshots from club apps, WhatsApp club groups with your level specified, or a screenshot of your Playtomic / WeCourts profile (JPEG, PNG, WebP, or PDF)."
         >
           <input
             type="file"

@@ -49,6 +49,7 @@ export const GENDER_OPTIONS = [
 export const REFERRAL_SOURCES = [
   { value: 'friend', label: 'Friend' },
   { value: 'instagram', label: 'Instagram' },
+  { value: 'event', label: 'Event' },
 ] as const;
 
 export const FRIEND_REFERRAL_LABEL = REFERRAL_SOURCES[0].label;
@@ -74,15 +75,15 @@ export const APPLICATION_FORM_FIELDS: ApplicationFormField[] = [
     name: 'gender',
     label: 'Gender',
     type: 'select',
-    required: false,
-    hint: 'Optional. Helps us balance games and events.',
+    required: true,
+    hint: 'Helps us balance games and events.',
     options: [...GENDER_OPTIONS],
   },
   {
     name: 'referralSource',
     label: 'How did you hear about us?',
     type: 'select',
-    required: false,
+    required: true,
     options: [...REFERRAL_SOURCES],
   },
   {
@@ -90,7 +91,7 @@ export const APPLICATION_FORM_FIELDS: ApplicationFormField[] = [
     label: 'Proof of skill',
     type: 'file',
     required: false,
-    hint: 'Optional. Upload a screenshot, ranking, or match result (JPEG, PNG, WebP, or PDF).',
+    hint: 'Optional. Screenshots from club apps, WhatsApp club groups with your level, or your Playtomic / WeCourts profile (JPEG, PNG, WebP, or PDF).',
     accept: 'image/jpeg,image/png,image/webp,application/pdf',
   },
 ];

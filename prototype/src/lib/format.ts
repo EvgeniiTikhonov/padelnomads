@@ -1,4 +1,4 @@
-import { LEVELS, type GameFormat, type GameStatus, type KarmaTier, type Level, type ParticipantStatus, type PreferredSide, type Gender, type UserStatus, type KarmaEventType } from '@/types';
+import { LEVELS, type GameFormat, type GameStatus, type KarmaTier, type Level, type ParticipantStatus, type PreferredSide, type BestHand, type MatchTypePref, type PlayTimePref, type Gender, type UserStatus, type KarmaEventType } from '@/types';
 
 export { LEVELS };
 
@@ -30,6 +30,25 @@ export const SIDE_LABELS: Record<PreferredSide, string> = {
   left: 'Left', right: 'Right', both: 'Both',
 };
 
+export const BEST_HAND_LABELS: Record<BestHand, string> = {
+  right: 'Right-handed', left: 'Left-handed', ambidextrous: 'Ambidextrous',
+};
+
+export const MATCH_TYPE_LABELS: Record<MatchTypePref, string> = {
+  competitive: 'Competitive', social: 'Social', both: 'Both',
+};
+
+export const PLAY_TIME_LABELS: Record<PlayTimePref, string> = {
+  morning: 'Mornings', afternoon: 'Afternoons', evening: 'Evenings',
+};
+
+/** Partner clubs players can pick as their preferred venues. */
+export const PREFERRED_CLUBS = [
+  'Padel Edition', 'Central Padel', 'Padel 700', 'PadelAE', 'Padel Art', 'Padel One',
+  'ZY', 'Paus', 'The Lob', 'Casa Padel', 'Ballers', 'ISD Padel', 'WPA', 'Rally Padel',
+  'Padel 360', 'Padel 26', 'Oxygen', 'Al Habtoor', 'Danube',
+] as const;
+
 export const GENDER_LABELS: Record<Gender, string> = {
   male: 'Male', female: 'Female', non_binary: 'Non-binary', prefer_not_to_say: 'Prefer not to say',
 };
@@ -54,18 +73,53 @@ export const KARMA_TIER_META: Record<KarmaTier, { label: string; className: stri
 };
 
 export const PARTICIPANT_STATUS_META: Record<ParticipantStatus, { label: string; className: string }> = {
-  registered: { label: 'Awaiting confirmation', className: 'bg-amber-500/15 text-amber-300' },
+  registered: { label: 'Registered', className: 'bg-primary/15 text-primary' },
   confirmed: { label: 'Confirmed', className: 'bg-primary/15 text-primary' },
   cancelled: { label: 'Cancelled', className: 'bg-red-500/15 text-red-300' },
   no_show: { label: 'No-show', className: 'bg-red-500/15 text-red-300' },
   waitlisted: { label: 'Waitlisted', className: 'bg-white/10 text-white/60' },
+  pending_replacement: { label: 'Finding replacement', className: 'bg-orange-500/15 text-orange-300' },
 };
+
+/** Formats where players register as a fixed pair / team of two. */
+export const FIXED_TEAM_FORMATS: GameFormat[] = [
+  'fixed_pairs',
+  'king_of_the_court',
+  'king_queen_of_the_court',
+  'mini_tournament',
+];
+
+export function isFixedTeamFormat(format: GameFormat): boolean {
+  return FIXED_TEAM_FORMATS.includes(format);
+}
+
+/** How long an off-app partner invite holds a roster spot. */
+export const EXTERNAL_PARTNER_HOLD_HOURS = 24;
+
+/** Hours before kickoff after which a cancel is "late" (pay or replacement). */
+export const LATE_CANCEL_HOURS = 12;
+
+/** Simulated organizer WhatsApp for late-cancel help when there is no waitlist. */
+export const ADMIN_WHATSAPP_E164 = '971501234567';
+
+export function hoursUntilGame(game: { date: string; startTime: string }): number {
+  const start = new Date(`${game.date}T${game.startTime}:00`);
+  return (start.getTime() - Date.now()) / 3600000;
+}
+
+export function isLateCancel(game: { date: string; startTime: string }): boolean {
+  return hoursUntilGame(game) < LATE_CANCEL_HOURS;
+}
+
+export function adminWhatsAppUrl(message: string): string {
+  return `https://wa.me/${ADMIN_WHATSAPP_E164}?text=${encodeURIComponent(message)}`;
+}
 
 export const KARMA_EVENT_LABELS: Record<KarmaEventType, string> = {
   on_time_game: 'Played on time',
   streak_bonus: 'Punctuality streak bonus',
   conduct_award: 'Good conduct award',
-  late_cancellation: 'Late cancellation (<24h)',
+  late_cancellation: 'Late cancellation (<12h)',
   very_late_cancellation: 'Very late cancellation (<4h)',
   no_show: 'No-show',
   late_arrival: 'Late arrival',

@@ -3,25 +3,27 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  ArrowLeft, CalendarDays, Clock, MapPin, Users, LayoutGrid, Check, X, UserPlus, Lock,
+  ArrowLeft, CalendarDays, Clock, MapPin, Users, LayoutGrid,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { GameStatusBadge, ParticipantStatusBadge, VerifiedBadge } from '@/components/badges';
+import { GameStatusBadge, ParticipantStatusBadge } from '@/components/badges';
 import { GameResults } from '@/components/game-results';
-import { useMockData, ALLOW_SELF_REGISTER } from '@/data/provider';
-import { spotsTaken } from '@/lib/derive';
-import { FORMAT_LABELS, LEVEL_LABELS, formatDateLong, initials } from '@/lib/format';
+import { FixedTeamRoster } from '@/components/fixed-team-roster';
+import { ParticipationActions } from '@/components/participation-actions';
+import { useMockData } from '@/data/provider';
+import { spotsTaken, maxFixedTeams } from '@/lib/derive';
+import { FORMAT_LABELS, LEVEL_LABELS, formatDateLong, initials, isFixedTeamFormat } from '@/lib/format';
+import { courtLabel, teamLabel } from '@/lib/allocation';
+import type { GameTeam, User } from '@/types';
 
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const {
-    games, participants, teams, matches, users, currentUser,
-    confirmParticipation, declineParticipation, registerForGame,
+    games, participants, teams, matches, users, currentUser, externalPartnerInvites,
   } = useMockData();
 
   const game = games.find((g) => g.id === id && !g.deleted);
@@ -37,10 +39,13 @@ export default function GameDetailPage() {
   const roster = participants.filter((p) => p.gameId === game.id);
   const active = roster.filter((p) => !['cancelled', 'waitlisted'].includes(p.status));
   const waitlist = roster.filter((p) => p.status === 'waitlisted');
-  const taken = spotsTaken(participants, game.id);
+  const taken = spotsTaken(participants, game.id, externalPartnerInvites, game.format);
   const available = Math.max(0, game.capacity - taken);
-  const mine = roster.find((p) => p.userId === currentUser.id);
-  const karmaBlocked = currentUser.karmaTier === 'restricted' || currentUser.karmaTier === 'suspended';
+  const mine = roster.find((p) => p.userId === currentUser.id && p.status !== 'cancelled');
+  const isFixedTeam = isFixedTeamFormat(game.format);
+  const teamsTaken = isFixedTeam ? taken / 2 : 0;
+  const teamsMax = isFixedTeam ? maxFixedTeams(game.capacity) : 0;
+  const teamsLeft = Math.max(0, teamsMax - teamsTaken);
 
   const userFor = (userId: string) => users.find((u) => u.id === userId);
 
@@ -82,7 +87,10 @@ export default function GameDetailPage() {
               <Badge variant="secondary" className="capitalize">{game.genderRestriction} only</Badge>
             )}
             <Badge variant="outline" className="gap-1">
-              <Users className="size-3" /> {taken}/{game.capacity} · {available === 0 ? 'Full' : `${available} spots left`}
+              <Users className="size-3" />
+              {isFixedTeam
+                ? `${teamsTaken}/${teamsMax} teams · ${teamsLeft === 0 ? 'Full' : `${teamsLeft} left`}`
+                : `${taken}/${game.capacity} · ${available === 0 ? 'Full' : `${available} spots left`}`}
             </Badge>
             {game.price != null && <Badge variant="outline">AED {game.price}</Badge>}
           </div>
@@ -92,7 +100,6 @@ export default function GameDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Results (stored per game, shown in the player's history) */}
       {game.status === 'completed' && gameTeams.length > 0 && (
         <>
           {mine && mine.pointsAwarded != null && (
@@ -109,109 +116,53 @@ export default function GameDetailPage() {
         </>
       )}
 
-      {/* Participation actions (PRD §16.5) */}
-      {game.status === 'upcoming' && (
-        <>
-          {mine?.status === 'registered' && (
-            <Card className="rounded-2xl border-amber-200 bg-amber-50/60 py-0">
-              <CardContent className="space-y-3 p-4">
-                <p className="text-sm font-medium">
-                  You&apos;re registered — please confirm your participation.
-                </p>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button className="h-11 flex-1" onClick={() => confirmParticipation(game.id, currentUser.id)}>
-                    <Check className="size-4" /> Confirm
-                  </Button>
-                  <Button variant="outline" className="h-11 flex-1" onClick={() => declineParticipation(game.id, currentUser.id)}>
-                    <X className="size-4" /> Cannot play
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  In production this arrives as a WhatsApp message with Confirm / Cannot play buttons.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-          {mine?.status === 'confirmed' && (
-            <Card className="rounded-2xl border-green-200 bg-green-50/60 py-0">
-              <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-                <p className="text-sm font-medium text-green-800">You&apos;re confirmed for this game. See you on court!</p>
-                <Button variant="outline" size="sm" onClick={() => declineParticipation(game.id, currentUser.id)}>
-                  Cancel my spot
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-          {mine?.status === 'cancelled' && (
-            <Alert>
-              <X className="size-4" />
-              <AlertTitle>You cancelled this game</AlertTitle>
-              <AlertDescription>Your spot was freed for other players.</AlertDescription>
-            </Alert>
-          )}
-          {mine?.status === 'waitlisted' && (
-            <Alert>
-              <Users className="size-4" />
-              <AlertTitle>You&apos;re on the waitlist</AlertTitle>
-              <AlertDescription>We&apos;ll notify you if a spot opens up.</AlertDescription>
-            </Alert>
-          )}
-          {!mine && ALLOW_SELF_REGISTER && (
-            karmaBlocked ? (
-              <Alert className="border-orange-300 bg-orange-50 text-orange-900">
-                <Lock className="size-4" />
-                <AlertTitle>Sign-up blocked by karma tier</AlertTitle>
-                <AlertDescription className="text-orange-800">
-                  Your karma balance ({currentUser.karmaBalance}) puts you in the {currentUser.karmaTier} tier, which blocks
-                  self-registration. Play reliably (+2 per on-time game) to recover — see your{' '}
-                  <Link href="/app/profile" className="font-medium underline">karma history</Link>.
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <Button size="lg" className="h-12 w-full text-base" onClick={() => registerForGame(game.id, currentUser.id)}>
-                <UserPlus className="size-4" /> {available === 0 ? 'Join waitlist' : 'Register for this game'}
-              </Button>
-            )
-          )}
-        </>
+      {game.status === 'upcoming' && game.distributionFinalizedAt && gameTeams.length > 0 && (
+        <CourtDistributionCard
+          teams={gameTeams}
+          users={users}
+          format={game.format}
+          highlightUserId={currentUser.id}
+        />
       )}
 
-      {/* Roster */}
-      <Card className="rounded-2xl py-0 shadow-sm">
-        <CardHeader className="p-4 pb-0">
-          <CardTitle className="font-heading text-base">Players ({active.length})</CardTitle>
-        </CardHeader>
-        <CardContent className="divide-y p-4 pt-2">
-          {active.length === 0 && (
-            <p className="py-4 text-sm text-muted-foreground">No players yet — be the first to register.</p>
-          )}
-          {active.map((p) => {
-            const u = userFor(p.userId);
-            if (!u) return null;
-            return (
-              <div key={p.id} className="flex items-center gap-3 py-2.5">
-                <Link href={`/app/players/${u.id}`} className="flex min-w-0 flex-1 items-center gap-3 hover:text-primary">
-                  <Avatar className="size-8">
-                    <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-                      {initials(u.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">
-                      {u.name}{u.id === currentUser.id && <span className="text-muted-foreground"> (you)</span>}
-                    </p>
-                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                      {LEVEL_LABELS[u.level]}
-                      {u.levelVerified && <VerifiedBadge className="size-3.5" />}
-                    </p>
-                  </div>
-                </Link>
-                <ParticipantStatusBadge status={p.status} />
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+      <ParticipationActions game={game} mine={mine} />
+
+      {isFixedTeam ? (
+        <FixedTeamRoster game={game} />
+      ) : (
+        <Card className="rounded-2xl py-0 shadow-sm">
+          <CardHeader className="p-4 pb-0">
+            <CardTitle className="font-heading text-base">Players ({active.length})</CardTitle>
+          </CardHeader>
+          <CardContent className="divide-y p-4 pt-2">
+            {active.length === 0 && (
+              <p className="py-4 text-sm text-muted-foreground">No players yet — be the first to register.</p>
+            )}
+            {active.map((p) => {
+              const u = userFor(p.userId);
+              if (!u) return null;
+              return (
+                <div key={p.id} className="flex items-center gap-3 py-2.5">
+                  <Link href={`/app/players/${u.id}`} className="flex min-w-0 flex-1 items-center gap-3 hover:text-primary">
+                    <Avatar className="size-8">
+                      <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+                        {initials(u.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {u.name}{u.id === currentUser.id && <span className="text-muted-foreground"> (you)</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{LEVEL_LABELS[u.level]}</p>
+                    </div>
+                  </Link>
+                  <ParticipantStatusBadge status={p.status} />
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {waitlist.length > 0 && (
         <Card className="rounded-2xl py-0 shadow-sm">
@@ -240,5 +191,45 @@ export default function GameDetailPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+function CourtDistributionCard({
+  teams, users, format, highlightUserId,
+}: {
+  teams: GameTeam[];
+  users: User[];
+  format: Parameters<typeof courtLabel>[1];
+  highlightUserId: string;
+}) {
+  const byCourt = [...teams].sort((a, b) => a.court - b.court);
+  const courts = Array.from(new Set(byCourt.map((t) => t.court)));
+  return (
+    <Card className="rounded-2xl border-primary/30 bg-primary/[0.03] py-0 shadow-sm">
+      <CardHeader className="p-4 pb-0">
+        <CardTitle className="flex items-center gap-1.5 font-heading text-base">
+          <LayoutGrid className="size-4 text-primary" /> Court distribution
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 p-4 pt-3">
+        {courts.map((court) => (
+          <div key={court} className="rounded-xl border p-3">
+            <Badge variant={court <= 3 ? 'default' : 'secondary'} className="mb-1.5">
+              {courtLabel(court, format)}
+            </Badge>
+            <div className="space-y-0.5">
+              {byCourt.filter((t) => t.court === court).map((t) => {
+                const mine = t.playerIds.includes(highlightUserId);
+                return (
+                  <p key={t.id} className={`text-sm ${mine ? 'font-semibold text-primary' : ''}`}>
+                    {teamLabel(t.playerIds, users)}{mine && ' · you'}
+                  </p>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

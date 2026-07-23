@@ -2,8 +2,9 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { ArrowLeft, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,48 +15,164 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { useMockData } from '@/data/provider';
-import { FORMAT_LABELS, LEVELS, LEVEL_LABELS } from '@/lib/format';
+import { visibleGames } from '@/lib/derive';
+import { FORMAT_LABELS, LEVELS, LEVEL_LABELS, formatDate } from '@/lib/format';
 import type { Game, GameFormat, Level } from '@/types';
 
 const VENUES = ['Padel Point, Al Quoz', 'Matcha Club, Al Quoz', 'The Padel Lab, JLT', 'Real Padel Club, Al Barsha', 'ISD Sports City'];
 
+/** Shift a YYYY-MM-DD date by N days (week-over-week default = +7). */
+function shiftDate(iso: string, days: number): string {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+interface GameDraft {
+  copiedFromId: string | null;
+  title: string;
+  format: GameFormat | null;
+  venue: string | null;
+  date: string;
+  startTime: string;
+  endTime: string;
+  courts: number;
+  capacity: number;
+  level: Game['level'] | null;
+  genderRestriction: NonNullable<Game['genderRestriction']> | null;
+  price: string;
+  description: string;
+  rem24: boolean;
+  rem2: boolean;
+}
+
+const EMPTY_DRAFT: GameDraft = {
+  copiedFromId: null,
+  title: '',
+  format: null,
+  venue: null,
+  date: '',
+  startTime: '19:00',
+  endTime: '21:00',
+  courts: 2,
+  capacity: 8,
+  level: 'mixed',
+  genderRestriction: 'mixed',
+  price: '',
+  description: '',
+  rem24: true,
+  rem2: true,
+};
+
+function draftFromGame(source: Game): GameDraft {
+  const rem = source.reminderSchedule ?? [];
+  return {
+    copiedFromId: source.id,
+    title: source.title,
+    format: source.format,
+    venue: source.venue,
+    date: shiftDate(source.date, 7),
+    startTime: source.startTime,
+    endTime: source.endTime,
+    courts: source.courts,
+    capacity: source.capacity,
+    level: source.level,
+    genderRestriction: source.genderRestriction ?? 'mixed',
+    price: source.price != null ? String(source.price) : '',
+    description: source.description ?? '',
+    rem24: rem.length === 0 ? true : rem.includes('24h'),
+    rem2: rem.length === 0 ? true : rem.includes('2h'),
+  };
+}
+
 export default function CreateGamePage() {
-  const { createGame } = useMockData();
+  return (
+    <React.Suspense fallback={<div className="text-sm text-muted-foreground">Loading…</div>}>
+      <CreateGameForm />
+    </React.Suspense>
+  );
+}
+
+function CreateGameForm() {
+  const { createGame, games } = useMockData();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromId = searchParams.get('from');
 
-  const [title, setTitle] = React.useState('');
-  const [format, setFormat] = React.useState<GameFormat | null>(null);
-  const [venue, setVenue] = React.useState<string | null>(null);
-  const [date, setDate] = React.useState('');
-  const [startTime, setStartTime] = React.useState('19:00');
-  const [endTime, setEndTime] = React.useState('21:00');
-  const [courts, setCourts] = React.useState(2);
-  const [capacity, setCapacity] = React.useState(8);
-  const [level, setLevel] = React.useState<Game['level'] | null>('mixed');
-  const [genderRestriction, setGenderRestriction] = React.useState<NonNullable<Game['genderRestriction']> | null>('mixed');
-  const [price, setPrice] = React.useState('');
-  const [description, setDescription] = React.useState('');
-  const [rem24, setRem24] = React.useState(true);
-  const [rem2, setRem2] = React.useState(true);
-  const [confirmTiming, setConfirmTiming] = React.useState('48h');
+  const templates = React.useMemo(
+    () =>
+      visibleGames(games)
+        .slice()
+        .sort((a, b) => (b.date + b.startTime).localeCompare(a.date + a.startTime)),
+    [games],
+  );
 
-  const valid = title.trim() && format && venue && date && startTime && endTime && capacity > 0;
+  const [draft, setDraft] = React.useState<GameDraft>(() => {
+    if (!fromId) return EMPTY_DRAFT;
+    const source = games.find((g) => g.id === fromId && !g.deleted);
+    return source ? draftFromGame(source) : EMPTY_DRAFT;
+  });
+
+  // Keep form in sync when navigating here with a different ?from= id.
+  const [syncedFrom, setSyncedFrom] = React.useState<string | null>(fromId);
+  if (fromId !== syncedFrom) {
+    setSyncedFrom(fromId);
+    if (fromId) {
+      const source = games.find((g) => g.id === fromId && !g.deleted);
+      if (source) setDraft(draftFromGame(source));
+    }
+  }
+
+  const patch = <K extends keyof GameDraft>(key: K, value: GameDraft[K]) => {
+    setDraft((d) => ({ ...d, [key]: value }));
+  };
+
+  const applyTemplate = (source: Game) => {
+    setDraft(draftFromGame(source));
+    toast.success('Game duplicated', {
+      description: `Copied from “${source.title}” (${formatDate(source.date)}). Date set to next week — tweak anything before creating.`,
+    });
+  };
+
+  const venueOptions = React.useMemo(() => {
+    if (draft.venue && !VENUES.includes(draft.venue)) return [draft.venue, ...VENUES];
+    return VENUES;
+  }, [draft.venue]);
+
+  const valid =
+    draft.title.trim() &&
+    draft.format &&
+    draft.venue &&
+    draft.date &&
+    draft.startTime &&
+    draft.endTime &&
+    draft.capacity > 0;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid) return;
     const game = createGame({
-      title: title.trim(), format: format!, venue: venue!,
-      date, startTime, endTime,
-      courts, capacity, level: level ?? 'mixed',
-      genderRestriction: genderRestriction ?? undefined,
-      price: price ? Number(price) : undefined,
-      description: description.trim() || undefined,
-      reminderSchedule: [rem24 && '24h', rem2 && '2h'].filter(Boolean) as string[],
-      confirmationSchedule: confirmTiming,
+      title: draft.title.trim(),
+      format: draft.format!,
+      venue: draft.venue!,
+      date: draft.date,
+      startTime: draft.startTime,
+      endTime: draft.endTime,
+      courts: draft.courts,
+      capacity: draft.capacity,
+      level: draft.level ?? 'mixed',
+      genderRestriction: draft.genderRestriction ?? undefined,
+      price: draft.price ? Number(draft.price) : undefined,
+      description: draft.description.trim() || undefined,
+      reminderSchedule: [draft.rem24 && '24h', draft.rem2 && '2h'].filter(Boolean) as string[],
     });
     router.push(`/admin/games/${game.id}`);
   };
+
+  const copiedFrom = draft.copiedFromId ? games.find((g) => g.id === draft.copiedFromId) : null;
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -66,18 +183,52 @@ export default function CreateGamePage() {
       <Card className="rounded-2xl shadow-sm">
         <CardHeader>
           <CardTitle className="font-heading text-xl">Create game</CardTitle>
-          <CardDescription>New games appear immediately under Upcoming and in the player app.</CardDescription>
+          <CardDescription>
+            New games appear immediately under Upcoming and in the player app. Duplicate a previous week&apos;s
+            game to keep the same setup and only change what you need.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="space-y-5">
+            <div className="space-y-2 rounded-xl border border-dashed border-primary/30 bg-primary/[0.03] p-4">
+              <Label className="flex items-center gap-1.5">
+                <Copy className="size-3.5 text-primary" /> Duplicate from previous game
+              </Label>
+              <Select
+                value={draft.copiedFromId}
+                onValueChange={(id) => {
+                  if (!id) return;
+                  const source = games.find((g) => g.id === id);
+                  if (source) applyTemplate(source);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Pick a past or upcoming game to copy…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.title} · {formatDate(g.date)} · {FORMAT_LABELS[g.format]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {copiedFrom && (
+                <p className="text-xs text-muted-foreground">
+                  Prefilling from “{copiedFrom.title}” ({formatDate(copiedFrom.date)} {copiedFrom.startTime}).
+                  Date bumped +7 days — edit any field below before creating.
+                </p>
+              )}
+            </div>
+
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="title">Game name *</Label>
-                <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Tuesday Americano" />
+                <Input id="title" value={draft.title} onChange={(e) => patch('title', e.target.value)} placeholder="e.g. Tuesday Americano" />
               </div>
               <div className="space-y-2">
                 <Label>Format *</Label>
-                <Select value={format} onValueChange={(v) => setFormat(v as GameFormat)}>
+                <Select value={draft.format} onValueChange={(v) => patch('format', v as GameFormat)}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select format" /></SelectTrigger>
                   <SelectContent>
                     {(Object.keys(FORMAT_LABELS) as GameFormat[]).map((f) => (
@@ -88,40 +239,40 @@ export default function CreateGamePage() {
               </div>
               <div className="space-y-2">
                 <Label>Venue *</Label>
-                <Select value={venue} onValueChange={(v) => setVenue(v as string)}>
+                <Select value={draft.venue} onValueChange={(v) => patch('venue', v as string)}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select venue" /></SelectTrigger>
                   <SelectContent>
-                    {VENUES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                    {venueOptions.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="date">Date *</Label>
-                <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                <Input id="date" type="date" value={draft.date} onChange={(e) => patch('date', e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="start">Start *</Label>
-                  <Input id="start" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                  <Input id="start" type="time" value={draft.startTime} onChange={(e) => patch('startTime', e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="end">End *</Label>
-                  <Input id="end" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                  <Input id="end" type="time" value={draft.endTime} onChange={(e) => patch('endTime', e.target.value)} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="courts">Courts</Label>
-                  <Input id="courts" type="number" min={1} value={courts} onChange={(e) => setCourts(Number(e.target.value))} />
+                  <Input id="courts" type="number" min={1} value={draft.courts} onChange={(e) => patch('courts', Number(e.target.value))} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="capacity">Capacity *</Label>
-                  <Input id="capacity" type="number" min={2} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} />
+                  <Input id="capacity" type="number" min={2} value={draft.capacity} onChange={(e) => patch('capacity', Number(e.target.value))} />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Level</Label>
-                <Select value={level} onValueChange={(v) => setLevel(v as Game['level'])}>
+                <Select value={draft.level} onValueChange={(v) => patch('level', v as Game['level'])}>
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {(['mixed', ...LEVELS] as (Level | 'mixed')[]).map((l) => (
@@ -132,7 +283,10 @@ export default function CreateGamePage() {
               </div>
               <div className="space-y-2">
                 <Label>Gender restriction</Label>
-                <Select value={genderRestriction} onValueChange={(v) => setGenderRestriction(v as NonNullable<Game['genderRestriction']>)}>
+                <Select
+                  value={draft.genderRestriction}
+                  onValueChange={(v) => patch('genderRestriction', v as NonNullable<Game['genderRestriction']>)}
+                >
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="mixed">Mixed (no restriction)</SelectItem>
@@ -143,36 +297,24 @@ export default function CreateGamePage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="price">Price (AED)</Label>
-                <Input id="price" type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Optional" />
+                <Input id="price" type="number" min={0} value={draft.price} onChange={(e) => patch('price', e.target.value)} placeholder="Optional" />
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="desc">Description</Label>
-                <Textarea id="desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What players should know…" />
+                <Textarea id="desc" value={draft.description} onChange={(e) => patch('description', e.target.value)} placeholder="What players should know…" />
               </div>
             </div>
 
             <div className="space-y-3 rounded-xl bg-muted/60 p-4">
-              <p className="text-sm font-semibold">WhatsApp options</p>
+              <p className="text-sm font-semibold">WhatsApp reminders</p>
               <label className="flex items-center gap-3 text-sm">
-                <Checkbox checked={rem24} onCheckedChange={(c) => setRem24(c === true)} /> Reminder 24h before start
+                <Checkbox checked={draft.rem24} onCheckedChange={(c) => patch('rem24', c === true)} /> Reminder 24h before start
               </label>
               <label className="flex items-center gap-3 text-sm">
-                <Checkbox checked={rem2} onCheckedChange={(c) => setRem2(c === true)} /> Reminder 2h before start
+                <Checkbox checked={draft.rem2} onCheckedChange={(c) => patch('rem2', c === true)} /> Reminder 2h before start
               </label>
-              <div className="flex items-center gap-3">
-                <Label className="shrink-0 text-sm font-normal">Confirmation request</Label>
-                <Select value={confirmTiming} onValueChange={(v) => setConfirmTiming(v as string)}>
-                  <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="on_add">Immediately when added</SelectItem>
-                    <SelectItem value="72h">72h before start</SelectItem>
-                    <SelectItem value="48h">48h before start</SelectItem>
-                    <SelectItem value="24h">24h before start</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               <p className="text-xs text-muted-foreground">
-                Utility templates, sent 1:1 to opted-in registered players. No real messages are sent in this prototype.
+                Players are confirmed as soon as they register. Reminders are sent 1:1 to opted-in players (simulated).
               </p>
             </div>
 

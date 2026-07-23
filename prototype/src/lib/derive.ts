@@ -1,7 +1,24 @@
-import type { Game, GameParticipant, User } from '@/types';
+import type { ExternalPartnerInvite, Game, GameFormat, GameParticipant, User } from '@/types';
+import { isFixedTeamFormat } from '@/lib/format';
 
 export function visibleGames(games: Game[]): Game[] {
   return games.filter((g) => !g.deleted);
+}
+
+export function isExternalPartnerHoldActive(
+  invite: ExternalPartnerInvite,
+  at: number = Date.now(),
+): boolean {
+  return new Date(invite.expiresAt).getTime() > at;
+}
+
+/** Active (non-expired) off-app partner holds for a game — each counts as one roster spot. */
+export function activeExternalHolds(
+  invites: ExternalPartnerInvite[],
+  gameId: string,
+  at: number = Date.now(),
+): ExternalPartnerInvite[] {
+  return invites.filter((i) => i.gameId === gameId && isExternalPartnerHoldActive(i, at));
 }
 
 // PRD §7.3 — games scheduled for the next 2 weeks
@@ -21,10 +38,83 @@ export function rosterFor(participants: GameParticipant[], gameId: string): Game
   return participants.filter((p) => p.gameId === gameId);
 }
 
-export function spotsTaken(participants: GameParticipant[], gameId: string): number {
-  return rosterFor(participants, gameId).filter(
+/** Max teams for a fixed-team game (8 players → 4 teams, 16 → 8). */
+export function maxFixedTeams(capacity: number): number {
+  return Math.floor(capacity / 2);
+}
+
+/**
+ * How many team slots are occupied on a fixed-team game.
+ * A pair, a pending invite pair, a solo looking for a partner, or a solo +
+ * Partner (TBC) hold each count as one team.
+ */
+export function fixedTeamsTaken(
+  participants: GameParticipant[],
+  gameId: string,
+  _externalInvites: ExternalPartnerInvite[] = [],
+): number {
+  const active = rosterFor(participants, gameId).filter(
+    (p) => !['cancelled', 'waitlisted'].includes(p.status),
+  );
+  const byUser = new Map(active.map((p) => [p.userId, p]));
+  const seen = new Set<string>();
+  let teams = 0;
+
+  for (const p of active) {
+    if (seen.has(p.userId)) continue;
+
+    if (p.partnerUserId && byUser.has(p.partnerUserId)) {
+      seen.add(p.userId);
+      seen.add(p.partnerUserId);
+      teams += 1;
+      continue;
+    }
+
+    if (p.partnerInviteFrom && byUser.has(p.partnerInviteFrom)) {
+      seen.add(p.userId);
+      seen.add(p.partnerInviteFrom);
+      teams += 1;
+      continue;
+    }
+
+    // Outgoing invite proposer is counted with the recipient above
+    if (active.some((q) => q.partnerInviteFrom === p.userId)) {
+      continue;
+    }
+
+    seen.add(p.userId);
+    teams += 1;
+  }
+
+  return teams;
+}
+
+/**
+ * Player seats occupied toward capacity.
+ * Fixed-team formats: each team slot counts as 2 (so 4 teams fill an 8-player game).
+ */
+export function spotsTaken(
+  participants: GameParticipant[],
+  gameId: string,
+  externalInvites: ExternalPartnerInvite[] = [],
+  format?: GameFormat,
+): number {
+  if (format && isFixedTeamFormat(format)) {
+    return fixedTeamsTaken(participants, gameId, externalInvites) * 2;
+  }
+  const people = rosterFor(participants, gameId).filter(
     (p) => !['cancelled', 'waitlisted'].includes(p.status),
   ).length;
+  return people + activeExternalHolds(externalInvites, gameId).length;
+}
+
+export function isGameFull(
+  participants: GameParticipant[],
+  gameId: string,
+  externalInvites: ExternalPartnerInvite[],
+  game: Pick<Game, 'capacity' | 'format'>,
+): boolean {
+  return spotsTaken(participants, gameId, externalInvites, game.format) >= game.capacity;
 }
 
 export interface LeaderboardRow {

@@ -9,8 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GameResults } from '@/components/game-results';
 import { VerifiedBadge } from '@/components/badges';
+import {
+  HeadToHeadCard, PartnersCard, PlayerStatsCard, PreferencesCard,
+} from '@/components/player-stats';
 import { useMockData } from '@/data/provider';
 import { leaderboard, upcomingGamesNextTwoWeeks } from '@/lib/derive';
+import { playerMatchRecords } from '@/lib/playerStats';
 import {
   FORMAT_LABELS, GENDER_LABELS, LEVEL_LABELS, SIDE_LABELS, formatDate, initials,
 } from '@/lib/format';
@@ -44,6 +48,8 @@ export default function PublicPlayerProfilePage() {
     participants.some((p) => p.gameId === g.id && p.userId === player.id && p.status !== 'cancelled'),
   ).length;
   const lastGame = completed[0]?.game;
+  const records = playerMatchRecords(player.id, games, teams, matches);
+  const showHeadToHead = currentUser.role === 'player' && currentUser.id !== player.id;
 
   return (
     <div className="space-y-5">
@@ -100,6 +106,18 @@ export default function PublicPlayerProfilePage() {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* Playtomic-style stats, head-to-head, preferences, partners */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <PlayerStatsCard records={records} />
+        <div className="space-y-5">
+          {showHeadToHead && (
+            <HeadToHeadCard viewer={currentUser} other={player} games={games} teams={teams} matches={matches} />
+          )}
+          <PreferencesCard user={player} />
+        </div>
+        <PartnersCard playerId={player.id} users={users} games={games} teams={teams} matches={matches} linkPlayers />
       </div>
 
       <div>

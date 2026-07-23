@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Plus, Users, ArrowRight } from 'lucide-react';
+import { Plus, Users, ArrowRight, Copy } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +13,7 @@ import { spotsTaken, visibleGames } from '@/lib/derive';
 import { FORMAT_LABELS, formatDate } from '@/lib/format';
 
 export default function AdminGamesPage() {
-  const { games, participants } = useMockData();
+  const { games, participants, externalPartnerInvites } = useMockData();
   const [tab, setTab] = React.useState<'upcoming' | 'live' | 'past'>('upcoming');
 
   const all = visibleGames(games);
@@ -50,11 +50,11 @@ export default function AdminGamesPage() {
           </div>
         )}
         {lists[tab].map((g) => {
-          const taken = spotsTaken(participants, g.id);
+          const taken = spotsTaken(participants, g.id, externalPartnerInvites, g.format);
           return (
-            <Link key={g.id} href={`/admin/games/${g.id}`} className="block">
-              <Card className="rounded-2xl py-0 shadow-sm transition-shadow hover:shadow-md">
-                <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
+            <Card key={g.id} className="rounded-2xl py-0 shadow-sm transition-shadow hover:shadow-md">
+              <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-2 p-4">
+                <Link href={`/admin/games/${g.id}`} className="flex min-w-0 flex-1 items-center gap-x-4 gap-y-2">
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2 font-medium">
                       {g.title} <GameStatusBadge status={g.status} />
@@ -66,10 +66,15 @@ export default function AdminGamesPage() {
                   <Badge variant="outline" className="gap-1">
                     <Users className="size-3" /> {taken}/{g.capacity}
                   </Badge>
-                  <ArrowRight className="size-4 text-muted-foreground/50" />
-                </CardContent>
-              </Card>
-            </Link>
+                  <ArrowRight className="size-4 shrink-0 text-muted-foreground/50" />
+                </Link>
+                <Link href={`/admin/games/new?from=${g.id}`} onClick={(e) => e.stopPropagation()}>
+                  <Button variant="outline" size="sm">
+                    <Copy className="size-3.5" /> Duplicate
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
           );
         })}
       </div>

@@ -19,13 +19,13 @@ const NAV = [
   { href: '/app/benefits', label: 'Benefits', icon: Sparkles },
   { href: '/app/offers', label: 'Offers', icon: Tag },
   { href: '/app/profile', label: 'Profile', icon: User },
-  { href: '/app/notifications', label: 'Alerts', icon: Bell },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { currentUser, notifications } = useMockData();
   const unread = notifications.filter((n) => n.userId === currentUser.id && !n.isRead).length;
+  const notificationsActive = pathname.startsWith('/app/notifications');
 
   const isActive = (href: string) =>
     href === '/app' ? pathname === '/app' : pathname.startsWith(href);
@@ -37,9 +37,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/app" aria-label="Padel Nomads home">
             <Logo markClassName="h-6" />
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <RoleSwitcher tone="dark" />
-            <Link href="/app/profile">
+            <Link
+              href="/app/notifications"
+              aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+              className={cn(
+                'relative flex size-9 items-center justify-center rounded-full transition-colors',
+                notificationsActive
+                  ? 'bg-white/10 text-white'
+                  : 'text-white/55 hover:bg-white/5 hover:text-white',
+              )}
+            >
+              <Bell className="size-5" />
+              {unread > 0 && (
+                <span className="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-4 text-primary-foreground">
+                  {unread > 9 ? '9+' : unread}
+                </span>
+              )}
+            </Link>
+            <Link href="/app/profile" aria-label="Profile">
               <Avatar className="size-8 ring-1 ring-white/15">
                 <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">
                   {initials(currentUser.name)}
@@ -65,12 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   )}
                 >
                   <item.icon className="size-4" />
-                  {item.label === 'Alerts' ? 'Notifications' : item.label}
-                  {item.label === 'Alerts' && unread > 0 && (
-                    <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
-                      {unread}
-                    </span>
-                  )}
+                  {item.label}
                 </Link>
               </li>
             ))}
@@ -93,9 +105,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <item.icon className="size-5" />
                 {item.label}
-                {item.label === 'Alerts' && unread > 0 && (
-                  <span className="absolute top-1 right-1/2 -mr-4 size-2 rounded-full bg-primary" />
-                )}
               </Link>
             </li>
           ))}

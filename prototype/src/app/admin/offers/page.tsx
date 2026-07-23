@@ -30,7 +30,17 @@ const SEGMENTS = [
   'E & D players',
 ];
 
-const emptyForm = { title: '', partnerName: '', description: '', promoCode: '', link: '', startDate: '', endDate: '' };
+const emptyForm = {
+  title: '',
+  partnerName: '',
+  description: '',
+  promoCode: '',
+  link: '',
+  instagramUrl: '',
+  logoUrl: '',
+  startDate: '',
+  endDate: '',
+};
 
 export default function AdminOffersPage() {
   const { offers, users, createOffer, updateOffer, toggleOffer, deleteOffer, sendOfferToSegment } = useMockData();
@@ -47,8 +57,15 @@ export default function AdminOffersPage() {
   const openEdit = (o: Offer) => {
     setEditingId(o.id);
     setForm({
-      title: o.title, partnerName: o.partnerName, description: o.description,
-      promoCode: o.promoCode ?? '', link: o.link ?? '', startDate: o.startDate, endDate: o.endDate,
+      title: o.title,
+      partnerName: o.partnerName,
+      description: o.description,
+      promoCode: o.promoCode ?? '',
+      link: o.link ?? '',
+      instagramUrl: o.instagramUrl ?? '',
+      logoUrl: o.logoUrl || o.imageUrl || '',
+      startDate: o.startDate,
+      endDate: o.endDate,
     });
     setEditorOpen(true);
   };
@@ -58,9 +75,15 @@ export default function AdminOffersPage() {
   const save = () => {
     if (!valid) return;
     const payload = {
-      title: form.title.trim(), partnerName: form.partnerName.trim(), description: form.description.trim(),
-      promoCode: form.promoCode.trim() || undefined, link: form.link.trim() || undefined,
-      startDate: form.startDate, endDate: form.endDate,
+      title: form.title.trim(),
+      partnerName: form.partnerName.trim(),
+      description: form.description.trim(),
+      promoCode: form.promoCode.trim() || undefined,
+      link: form.link.trim() || undefined,
+      instagramUrl: form.instagramUrl.trim() || undefined,
+      logoUrl: form.logoUrl.trim() || undefined,
+      startDate: form.startDate,
+      endDate: form.endDate,
     };
     if (editingId) updateOffer(editingId, payload);
     else createOffer({ ...payload, status: 'active' });
@@ -85,6 +108,7 @@ export default function AdminOffersPage() {
                 <TableHead className="pl-4">Offer</TableHead>
                 <TableHead>Partner</TableHead>
                 <TableHead>Promo code</TableHead>
+                <TableHead>Links</TableHead>
                 <TableHead>Validity</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="pr-4 text-right">Actions</TableHead>
@@ -94,11 +118,30 @@ export default function AdminOffersPage() {
               {offers.map((o) => (
                 <TableRow key={o.id}>
                   <TableCell className="max-w-56 pl-4">
-                    <p className="truncate font-medium">{o.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">{o.description}</p>
+                    <div className="flex items-center gap-2.5">
+                      {(o.logoUrl || o.imageUrl) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={o.logoUrl || o.imageUrl}
+                          alt=""
+                          className="size-8 shrink-0 rounded-lg border border-white/10 object-cover"
+                        />
+                      ) : (
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-[10px] font-bold text-primary">
+                          {o.partnerName.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{o.title}</p>
+                        <p className="truncate text-xs text-muted-foreground">{o.description}</p>
+                      </div>
+                    </div>
                   </TableCell>
                   <TableCell>{o.partnerName}</TableCell>
                   <TableCell>{o.promoCode ? <Badge variant="secondary" className="font-mono">{o.promoCode}</Badge> : '—'}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {[o.link && 'Web', o.instagramUrl && 'IG'].filter(Boolean).join(' · ') || '—'}
+                  </TableCell>
                   <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                     {formatDate(o.startDate)} – {formatDate(o.endDate)}
                   </TableCell>
@@ -131,13 +174,12 @@ export default function AdminOffersPage() {
         </CardContent>
       </Card>
 
-      {/* Create / edit dialog */}
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit offer' : 'Add offer'}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid max-h-[70vh] gap-4 overflow-y-auto sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
               <Label>Title *</Label>
               <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -155,8 +197,28 @@ export default function AdminOffersPage() {
               <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>External link</Label>
-              <Input value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} placeholder="https://…" />
+              <Label>Logo URL</Label>
+              <Input
+                value={form.logoUrl}
+                onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
+                placeholder="https://…/logo.png"
+              />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Website</Label>
+              <Input
+                value={form.link}
+                onChange={(e) => setForm({ ...form, link: e.target.value })}
+                placeholder="https://…"
+              />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Instagram</Label>
+              <Input
+                value={form.instagramUrl}
+                onChange={(e) => setForm({ ...form, instagramUrl: e.target.value })}
+                placeholder="https://instagram.com/…"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Start date *</Label>
@@ -174,7 +236,6 @@ export default function AdminOffersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Send to segment dialog (PRD §11.2 / §12.6) */}
       <Dialog open={sendTarget !== null} onOpenChange={(o) => !o && setSendTarget(null)}>
         <DialogContent>
           <DialogHeader>

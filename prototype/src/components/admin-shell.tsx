@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Inbox, CalendarDays, Users, Tag, Trophy,
-  MessageCircle, Gauge, BarChart3, Settings, Menu,
+  MessageCircle, Gauge, BarChart3, Settings, Menu, Bell,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from '@/components/logo';
@@ -71,6 +71,12 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
+  const pathname = usePathname();
+  const { currentUser, notifications } = useMockData();
+  const unread = notifications.filter(
+    (n) => n.userId === currentUser.id && !n.isRead && n.audience === 'admin',
+  ).length;
+  const notificationsActive = pathname.startsWith('/admin/notifications');
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -98,7 +104,26 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <Badge className="hidden border-none bg-white/10 text-white/70 sm:inline-flex">Admin</Badge>
             </Link>
           </div>
-          <RoleSwitcher tone="dark" />
+          <div className="flex items-center gap-1.5">
+            <Link
+              href="/admin/notifications"
+              aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+              className={cn(
+                'relative flex size-9 items-center justify-center rounded-full transition-colors',
+                notificationsActive
+                  ? 'bg-white/10 text-white'
+                  : 'text-white/55 hover:bg-white/5 hover:text-white',
+              )}
+            >
+              <Bell className="size-5" />
+              {unread > 0 && (
+                <span className="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-4 text-primary-foreground">
+                  {unread > 9 ? '9+' : unread}
+                </span>
+              )}
+            </Link>
+            <RoleSwitcher tone="dark" />
+          </div>
         </div>
       </header>
 

@@ -7,6 +7,9 @@ export type UserStatus = 'imported' | 'invited' | 'pending' | 'approved' | 'reje
 export const LEVELS = ['E', 'D', 'D+', 'C', 'C Strong', 'C+', 'B', 'B+', 'A', 'A+'] as const;
 export type Level = (typeof LEVELS)[number];
 export type PreferredSide = 'left' | 'right' | 'both';
+export type BestHand = 'right' | 'left' | 'ambidextrous';
+export type MatchTypePref = 'competitive' | 'social' | 'both';
+export type PlayTimePref = 'morning' | 'afternoon' | 'evening';
 export type Gender = 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';
 export type KarmaTier = 'good' | 'warning' | 'restricted' | 'suspended';
 
@@ -21,6 +24,10 @@ export interface User {
   levelVerifiedAt?: string;
   levelVerifiedBy?: string;
   preferredSide: PreferredSide;
+  bestHand?: BestHand;                 // playing hand (Playtomic-style preference)
+  preferredMatchType?: MatchTypePref;  // competitive / social / both
+  preferredPlayTime?: PlayTimePref[];  // multi-select: morning / afternoon / evening
+  preferredClubs?: string[];           // multi-select from PREFERRED_CLUBS
   gender?: Gender;
   whatsappOptIn: boolean; whatsappOptInAt?: string;
   whatsappMarketingOptIn: boolean; whatsappMarketingOptInAt?: string;
@@ -53,6 +60,8 @@ export interface Application {
   name?: string;
   level: Level; preferredSide: PreferredSide; gender?: Gender;
   referralSource?: 'friend' | 'instagram' | 'facebook' | 'event' | 'search' | 'other';
+  /** Phone of the friend who referred the applicant (optional; boosts approval odds). */
+  referrerPhoneNumber?: string;
   proofOfSkillFileUrl?: string;
   phoneNumber: string; email?: string;
   whatsappOptIn: boolean; whatsappMarketingOptIn: boolean;
@@ -78,20 +87,47 @@ export interface Game {
   deleted?: boolean;                // soft delete (prototype default)
   reminderSchedule?: string[];      // e.g. ['24h','2h']
   confirmationSchedule?: string;
+  /** Court distribution seeded (auto or hand-adjusted) before the game starts. */
+  distributionPreparedAt?: string;
+  /** Distribution locked in and announced (WhatsApp message generated). */
+  distributionFinalizedAt?: string;
   createdBy: string; createdAt: string; updatedAt: string;
 }
 
 // PRD §15.5
-export type ParticipantStatus = 'registered' | 'confirmed' | 'cancelled' | 'no_show' | 'waitlisted';
+export type ParticipantStatus =
+  | 'registered' | 'confirmed' | 'cancelled' | 'no_show' | 'waitlisted'
+  | 'pending_replacement';   // late cancel: holding spot until waitlist takes it
 export interface GameParticipant {
   id: string; gameId: string; userId: string; teamId?: string;
   status: ParticipantStatus;
   confirmationRequestedAt?: string; confirmedAt?: string; declinedAt?: string;
+  /** Player tapped “Let’s go” — shows see-you-on-court message. */
+  letsGoAt?: string;
   cancelledAt?: string;             // drives late-cancellation karma
+  replacementOfferedAt?: string;    // when player offered spot to waitlist
+  /** Fixed-team formats: registered alone and still needs a partner. */
+  lookingForPartner?: boolean;
+  /** Fixed-team formats: linked partner once paired. */
+  partnerUserId?: string;
+  /** Fixed-team formats: pending partner invite from this user id. */
+  partnerInviteFrom?: string;
   attendance?: 'on_time' | 'late' | 'no_show';
   paymentStatus?: 'pending' | 'paid' | 'unpaid' | 'waived';
   position?: number; pointsAwarded?: number;
   createdAt: string; updatedAt: string;
+}
+
+/** Invite a friend who is not yet on Padel Nomads; holds their spot for 24h. */
+export interface ExternalPartnerInvite {
+  id: string;
+  gameId: string;
+  fromUserId: string;
+  friendName: string;
+  friendPhone: string;           // E.164
+  createdAt: string;
+  /** Partner spot is reserved until this time (24h from invite). */
+  expiresAt: string;
 }
 
 // Team allocated to a court when a game goes live. Points are derived from the
@@ -127,17 +163,45 @@ export interface GameResult {
 
 // PRD §15.7
 export interface Offer {
-  id: string; title: string; partnerName: string; description: string;
-  promoCode?: string; link?: string; imageUrl?: string;
-  startDate: string; endDate: string; status: 'active' | 'inactive';
-  createdAt: string; updatedAt: string;
+  id: string;
+  title: string;
+  partnerName: string;
+  description: string;
+  promoCode?: string;
+  /** Partner website URL. */
+  link?: string;
+  /** Partner Instagram profile URL. */
+  instagramUrl?: string;
+  /** Partner logo image URL. */
+  logoUrl?: string;
+  /** @deprecated Prefer logoUrl — kept for older seed/admin payloads. */
+  imageUrl?: string;
+  startDate: string;
+  endDate: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+  updatedAt: string;
 }
 
 // PRD §15.8
 export interface AppNotification {
-  id: string; userId: string; title: string; message: string;
-  type: string; channel: 'in_app' | 'whatsapp';
-  isRead: boolean; relatedOutboundMessageId?: string; createdAt: string;
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: string;
+  channel: 'in_app' | 'whatsapp';
+  isRead: boolean;
+  relatedOutboundMessageId?: string;
+  /** Tap-through to a game detail page. */
+  relatedGameId?: string;
+  /** Tap-through to a partner offer. */
+  relatedOfferId?: string;
+  /** Tap-through to an application (admin). */
+  relatedApplicationId?: string;
+  /** Who this notification is for. Defaults to player. */
+  audience?: 'player' | 'admin';
+  createdAt: string;
 }
 
 // PRD §15.17

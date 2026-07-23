@@ -10,14 +10,19 @@ import { KarmaTierBadge } from '@/components/badges';
 import { useMockData } from '@/data/provider';
 import { leaderboard, upcomingGamesNextTwoWeeks } from '@/lib/derive';
 import { KARMA_TIER_META, formatDate, timeAgo } from '@/lib/format';
+import { notificationHref } from '@/lib/notifications';
 
 export default function PlayerDashboard() {
-  const { games, participants, users, currentUser, notifications, offers } = useMockData();
+  const { games, participants, users, currentUser, notifications, offers, markNotificationRead } = useMockData();
 
   const upcoming = upcomingGamesNextTwoWeeks(games);
   const myGames = upcoming.filter((g) =>
-    participants.some((p) => p.gameId === g.id && p.userId === currentUser.id && !['cancelled'].includes(p.status)));
+    participants.some((p) =>
+      p.gameId === g.id
+      && p.userId === currentUser.id
+      && ['confirmed', 'registered', 'pending_replacement', 'waitlisted'].includes(p.status)));
   const nextGame = myGames[0];
+  const upcomingOthers = upcoming.filter((g) => g.id !== nextGame?.id).slice(0, 4);
   const board = leaderboard(users, participants, games);
   const myRow = board.find((r) => r.user.id === currentUser.id);
   const recentNotifications = notifications
@@ -93,13 +98,16 @@ export default function PlayerDashboard() {
         </Card>
       </div>
 
-      {/* Next registered game */}
+      {/* Next game you're playing */}
       {nextGame && (
         <section>
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2">
             <h2 className="font-heading text-lg font-semibold">Your next game</h2>
+            <p className="text-sm text-muted-foreground">
+              Reminders go out 24 hours and 2 hours before kickoff.
+            </p>
           </div>
-          <GameCard game={nextGame} href={`/app/games/${nextGame.id}`} />
+          <GameCard game={nextGame} href={`/app/games/${nextGame.id}`} showActions />
         </section>
       )}
 
@@ -112,9 +120,13 @@ export default function PlayerDashboard() {
           </Link>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          {upcoming.slice(0, 4).map((g) => (
-            <GameCard key={g.id} game={g} href={`/app/games/${g.id}`} />
-          ))}
+          {upcomingOthers.map((g) => {
+            const mine = participants.find((p) => p.gameId === g.id && p.userId === currentUser.id && p.status !== 'cancelled');
+            const showActions = Boolean(mine);
+            return (
+              <GameCard key={g.id} game={g} href={`/app/games/${g.id}`} showActions={showActions} />
+            );
+          })}
         </div>
       </section>
 
@@ -131,12 +143,24 @@ export default function PlayerDashboard() {
             <CardContent className="space-y-3 p-4">
               {activeOffers.map((o) => (
                 <Link key={o.id} href="/app/offers" className="flex items-center gap-3">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <Sparkles className="size-4" />
-                  </span>
+                  {(o.logoUrl || o.imageUrl) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={o.logoUrl || o.imageUrl}
+                      alt=""
+                      className="size-9 shrink-0 rounded-lg border border-white/10 object-cover"
+                    />
+                  ) : (
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Sparkles className="size-4" />
+                    </span>
+                  )}
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{o.title}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{o.partnerName}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {o.partnerName}
+                      {o.promoCode ? ` · ${o.promoCode}` : ''}
+                    </span>
                   </span>
                 </Link>
               ))}
@@ -155,7 +179,12 @@ export default function PlayerDashboard() {
           <Card className="rounded-2xl py-0 shadow-sm">
             <CardContent className="divide-y p-0">
               {recentNotifications.map((n) => (
-                <Link key={n.id} href="/app/notifications" className="flex items-start gap-3 p-3.5">
+                <Link
+                  key={n.id}
+                  href={notificationHref(n)}
+                  onClick={() => { if (!n.isRead) markNotificationRead(n.id); }}
+                  className="flex items-start gap-3 p-3.5 transition-colors hover:bg-muted/40"
+                >
                   <span className={`mt-1 flex size-8 shrink-0 items-center justify-center rounded-lg ${n.isRead ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'}`}>
                     <Bell className="size-4" />
                   </span>

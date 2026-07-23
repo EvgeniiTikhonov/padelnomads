@@ -149,7 +149,7 @@ export default function KarmaPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 {[
                   ['On-time game', '+2'], ['Punctuality streak (5 games)', '+5'],
-                  ['Late cancellation (<24h)', '-15'], ['Very late cancellation (<4h)', '-25'],
+                  ['Late cancellation (<12h, paid)', '-15'], ['Very late cancellation (<4h)', '-25'],
                   ['No-show', '-30'], ['Late arrival', '-5'],
                   ['Non-payment', '-20'], ['Minor misconduct', '-10'], ['Major misconduct', '-30'],
                 ].map(([label, v]) => (

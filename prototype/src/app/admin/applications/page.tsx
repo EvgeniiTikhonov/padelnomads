@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Search, FileText, Link2, AlertTriangle, Check, X, MessageCircle,
 } from 'lucide-react';
@@ -29,14 +30,26 @@ const STATUS_TONE: Record<ApplicationStatus, string> = {
   rejected: 'bg-white/10 text-white/60',
 };
 
-export default function ApplicationsPage() {
+function ApplicationsPageContent() {
   const { applications, users, approveApplication, rejectApplication, setApplicationStatusAdmin } = useMockData();
+  const searchParams = useSearchParams();
+  const focusApplicationId = searchParams.get('application');
   const [tab, setTab] = React.useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
   const [query, setQuery] = React.useState('');
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [selectedId, setSelectedId] = React.useState<string | null>(focusApplicationId);
   const [overrideOpen, setOverrideOpen] = React.useState(false);
   const [overrideReason, setOverrideReason] = React.useState('');
   const [proofOpen, setProofOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!focusApplicationId) return;
+    const app = applications.find((a) => a.id === focusApplicationId);
+    if (!app) return;
+    setSelectedId(focusApplicationId);
+    if (app.status === 'pending' || app.status === 'approved' || app.status === 'rejected') {
+      setTab(app.status);
+    }
+  }, [focusApplicationId, applications]);
 
   const selected = applications.find((a) => a.id === selectedId) ?? null;
   const matchedUser = selected?.matchedExistingUserId
@@ -161,6 +174,9 @@ export default function ApplicationsPage() {
                   <div><dt className="text-xs text-muted-foreground">Preferred side</dt><dd>{SIDE_LABELS[selected.preferredSide]}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Gender</dt><dd>{selected.gender ? GENDER_LABELS[selected.gender] : '—'}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Referral</dt><dd className="capitalize">{selected.referralSource ?? '—'}</dd></div>
+                  {selected.referralSource === 'friend' && (
+                    <div><dt className="text-xs text-muted-foreground">Friend&apos;s phone</dt><dd className="font-mono">{selected.referrerPhoneNumber ?? '—'}</dd></div>
+                  )}
                   <div><dt className="text-xs text-muted-foreground">Service consent</dt><dd>{selected.whatsappOptIn ? '✅ Yes' : '❌ No'}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Marketing consent</dt><dd>{selected.whatsappMarketingOptIn ? '✅ Yes' : '❌ No'}</dd></div>
                   {selected.reviewedAt && (
@@ -254,5 +270,13 @@ export default function ApplicationsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function ApplicationsPage() {
+  return (
+    <React.Suspense fallback={<div className="text-sm text-muted-foreground">Loading applications…</div>}>
+      <ApplicationsPageContent />
+    </React.Suspense>
   );
 }
