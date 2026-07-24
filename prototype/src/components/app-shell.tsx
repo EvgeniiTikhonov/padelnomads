@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Home, CalendarDays, Trophy, Sparkles, Tag, User, Bell,
+  Home, CalendarDays, Trophy, Sparkles, Tag, User, Bell, MessageCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from '@/components/logo';
 import { RoleSwitcher } from '@/components/role-switcher';
 import { PlayerAvatar } from '@/components/player-avatar';
 import { useMockData } from '@/data/provider';
+import { totalUnreadMessages } from '@/lib/chat';
 
 const NAV = [
   { href: '/app', label: 'Home', icon: Home },
@@ -22,9 +23,23 @@ const NAV = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { currentUser, notifications } = useMockData();
-  const unread = notifications.filter((n) => n.userId === currentUser.id && !n.isRead).length;
+  const {
+    currentUser, notifications, games, participants, chatMessages, directMessages, chatReads, users,
+  } = useMockData();
+  const unreadNotifs = notifications.filter(
+    (n) => n.userId === currentUser.id && !n.isRead && n.audience !== 'admin',
+  ).length;
+  const unreadMessages = totalUnreadMessages(currentUser.id, {
+    games,
+    participants,
+    chatMessages,
+    directMessages,
+    chatReads,
+    users,
+    isAdmin: currentUser.role === 'admin',
+  });
   const notificationsActive = pathname.startsWith('/app/notifications');
+  const messagesActive = pathname.startsWith('/app/messages');
 
   const isActive = (href: string) =>
     href === '/app' ? pathname === '/app' : pathname.startsWith(href);
@@ -39,8 +54,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-1.5 sm:gap-2">
             <RoleSwitcher tone="dark" />
             <Link
+              href="/app/messages"
+              aria-label={unreadMessages > 0 ? `Messages, ${unreadMessages} unread` : 'Messages'}
+              className={cn(
+                'relative flex size-9 items-center justify-center rounded-full transition-colors',
+                messagesActive
+                  ? 'bg-white/10 text-white'
+                  : 'text-white/55 hover:bg-white/5 hover:text-white',
+              )}
+            >
+              <MessageCircle className="size-5" />
+              {unreadMessages > 0 && (
+                <span className="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-4 text-primary-foreground">
+                  {unreadMessages > 9 ? '9+' : unreadMessages}
+                </span>
+              )}
+            </Link>
+            <Link
               href="/app/notifications"
-              aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+              aria-label={unreadNotifs > 0 ? `Notifications, ${unreadNotifs} unread` : 'Notifications'}
               className={cn(
                 'relative flex size-9 items-center justify-center rounded-full transition-colors',
                 notificationsActive
@@ -49,9 +81,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
             >
               <Bell className="size-5" />
-              {unread > 0 && (
+              {unreadNotifs > 0 && (
                 <span className="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-4 text-primary-foreground">
-                  {unread > 9 ? '9+' : unread}
+                  {unreadNotifs > 9 ? '9+' : unreadNotifs}
                 </span>
               )}
             </Link>

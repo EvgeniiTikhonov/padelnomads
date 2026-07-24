@@ -73,11 +73,31 @@ export interface Application {
   proofOfSkillFileUrl?: string;
   phoneNumber: string; email?: string;
   whatsappOptIn: boolean; whatsappMarketingOptIn: boolean;
+  /** DIFC consent: accepted Terms + Privacy + data processing (required to apply). */
+  termsAndPrivacyAcceptedAt?: string;
+  termsAndPrivacyVersion?: string;
   matchedExistingUserId?: string;
   blacklistFlag: boolean;
   status: ApplicationStatus;
   reviewedBy?: string; reviewedAt?: string;
   createdAt: string; updatedAt: string;
+}
+
+/** Immutable consent log (DIFC Art. 12 — controller must demonstrate consent). */
+export type ConsentType = 'terms_and_privacy' | 'whatsapp_service' | 'marketing';
+export type ConsentMethod = 'apply_form' | 'claim_page' | 'profile_toggle';
+export interface ConsentRecord {
+  id: string;
+  applicationId?: string;
+  userId?: string;
+  type: ConsentType;
+  granted: boolean;
+  documentVersion: string;
+  /** Exact wording shown when consent was captured. */
+  consentTextSnapshot: string;
+  method: ConsentMethod;
+  capturedAt: string;
+  withdrawnAt?: string;
 }
 
 // PRD §15.4
@@ -294,6 +314,24 @@ export interface SupportRequest {
   issue: string;
   contactPhone: string;
   status: 'open' | 'resolved';
+  createdAt: string;
+}
+
+/** Per-game chat message — participants align on match participation. */
+export interface GameChatMessage {
+  id: string;
+  gameId: string;
+  userId: string;
+  body: string;
+  createdAt: string;
+}
+
+/** 1:1 in-app message between two players. */
+export interface DirectMessage {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  body: string;
   createdAt: string;
 }
 

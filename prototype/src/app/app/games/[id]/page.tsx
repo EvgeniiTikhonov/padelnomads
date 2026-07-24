@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  ArrowLeft, CalendarDays, Clock, MapPin, Users, LayoutGrid,
+  ArrowLeft, CalendarDays, Clock, MapPin, Users, LayoutGrid, MessageCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import { useMockData } from '@/data/provider';
 import { spotsTaken, maxFixedTeams } from '@/lib/derive';
 import { waitlistOrdered, waitlistUnitsOrdered } from '@/lib/waitlist';
 import { LEVEL_LABELS, formatDateLong, isFixedTeamFormat } from '@/lib/format';
+import { canChatInGame, unreadChatCount } from '@/lib/chat';
 import { TEAM_ENTRY_LABELS } from '@/lib/teamPriority';
 import { courtLabel, teamLabel } from '@/lib/allocation';
 import type { GameTeam, User } from '@/types';
@@ -28,6 +29,7 @@ export default function GameDetailPage() {
   const router = useRouter();
   const {
     games, participants, teams, matches, users, currentUser, externalPartnerInvites,
+    chatMessages, chatReads,
   } = useMockData();
 
   const game = games.find((g) => g.id === id && !g.deleted);
@@ -59,6 +61,10 @@ export default function GameDetailPage() {
   const gameTeams = teams.filter((t) => t.gameId === game.id);
   const gameMatches = matches.filter((m) => m.gameId === game.id);
   const myTeamId = gameTeams.find((t) => t.playerIds.includes(currentUser.id))?.id;
+  const canOpenChat = currentUser.role === 'admin' || canChatInGame(participants, game.id, currentUser.id);
+  const chatUnread = canOpenChat
+    ? unreadChatCount(chatMessages, chatReads, game.id, currentUser.id)
+    : 0;
 
   return (
     <div className="space-y-5">
@@ -135,6 +141,20 @@ export default function GameDetailPage() {
       )}
 
       <ParticipationActions game={game} mine={mine} />
+
+      {canOpenChat && (
+        <Button
+          variant="outline"
+          className="h-11 w-full gap-2 sm:w-auto"
+          render={<Link href={`/app/messages/game/${game.id}`} />}
+        >
+          <MessageCircle className="size-4" />
+          Open game chat
+          {chatUnread > 0 && (
+            <Badge className="ml-1 h-5 px-1.5 text-[10px]">{chatUnread} new</Badge>
+          )}
+        </Button>
+      )}
 
       {isFixedTeam ? (
         <FixedTeamRoster game={game} />

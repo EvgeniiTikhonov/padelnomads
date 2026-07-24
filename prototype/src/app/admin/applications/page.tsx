@@ -217,8 +217,8 @@ function ApplicationsPageContent() {
                       <dd>{referredBy.name}</dd>
                     </div>
                   )}
+                  <div><dt className="text-xs text-muted-foreground">Terms &amp; Privacy</dt><dd>{selected.termsAndPrivacyAcceptedAt ? `✅ ${selected.termsAndPrivacyVersion ?? 'accepted'}` : '❌ No'}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Service consent</dt><dd>{selected.whatsappOptIn ? '✅ Yes' : '❌ No'}</dd></div>
-                  <div><dt className="text-xs text-muted-foreground">Marketing consent</dt><dd>{selected.whatsappMarketingOptIn ? '✅ Yes' : '❌ No'}</dd></div>
                   {selected.reviewedAt && (
                     <div className="col-span-2"><dt className="text-xs text-muted-foreground">Reviewed</dt><dd>{formatDateTime(selected.reviewedAt)} by admin</dd></div>
                   )}

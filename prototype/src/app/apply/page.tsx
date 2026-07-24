@@ -17,6 +17,11 @@ import { Logo } from '@/components/logo';
 import { RoleSwitcher } from '@/components/role-switcher';
 import { useMockData } from '@/data/provider';
 import { LEVELS, LEVEL_LABELS, SIDE_LABELS, GENDER_LABELS } from '@/lib/format';
+import {
+  TERMS_AND_PRIVACY_VERSION,
+  TERMS_AND_PRIVACY_CONSENT_TEXT,
+  WHATSAPP_SERVICE_CONSENT_TEXT,
+} from '@/lib/legal';
 import type { Level, PreferredSide, Gender, Application } from '@/types';
 
 const REFERRAL_OPTIONS: { value: NonNullable<Application['referralSource']>; label: string }[] = [
@@ -54,6 +59,7 @@ function ApplyForm() {
   const [phone, setPhone] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [serviceConsent, setServiceConsent] = React.useState(false);
+  const [termsConsent, setTermsConsent] = React.useState(false);
   const [errors, setErrors] = React.useState<string[]>([]);
 
   React.useEffect(() => {
@@ -81,6 +87,7 @@ function ApplyForm() {
     }
     if (email && !/^\S+@\S+\.\S+$/.test(email)) errs.push('Email address is not valid.');
     if (!serviceConsent) errs.push('WhatsApp service messages consent is required (it enables reminders and confirmations).');
+    if (!termsConsent) errs.push('You must accept the Terms & Conditions and Privacy Policy to apply.');
     if (refToken && !playerReferral) {
       errs.push('This referral link is invalid or already used. Apply without a link, or ask your friend for a new invite.');
     }
@@ -104,6 +111,10 @@ function ApplyForm() {
       email: email.trim() || undefined,
       whatsappOptIn: serviceConsent,
       whatsappMarketingOptIn: false,
+      termsAndPrivacyAccepted: true,
+      termsAndPrivacyVersion: TERMS_AND_PRIVACY_VERSION,
+      termsAndPrivacyConsentText: TERMS_AND_PRIVACY_CONSENT_TEXT,
+      whatsappServiceConsentText: WHATSAPP_SERVICE_CONSENT_TEXT,
     });
     setViewRole('player');
     setApplicationStatus('pending');
@@ -206,6 +217,7 @@ function ApplyForm() {
                       />
                       <p className="text-xs text-muted-foreground">
                         Sharing your friend&apos;s number will increase your chances of being approved to the community.
+                        By sharing it, you confirm they&apos;re happy to be contacted by Padel Nomads about this invitation.
                       </p>
                     </div>
                   )}
@@ -311,6 +323,31 @@ function ApplyForm() {
               <div className="space-y-3 rounded-xl bg-muted/60 p-4">
                 <label className="flex items-start gap-3">
                   <Checkbox
+                    checked={termsConsent}
+                    onCheckedChange={(c) => setTermsConsent(c === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-sm">
+                    <strong>Terms, Privacy &amp; data processing</strong>{' '}
+                    <span className="text-destructive">*</span>
+                    <br />
+                    <span className="text-muted-foreground">
+                      I agree to the{' '}
+                      <Link href="/legal/terms" className="text-foreground underline underline-offset-2 hover:text-primary" target="_blank">
+                        Terms &amp; Conditions
+                      </Link>
+                      {' '}and{' '}
+                      <Link href="/legal/privacy" className="text-foreground underline underline-offset-2 hover:text-primary" target="_blank">
+                        Privacy Policy
+                      </Link>
+                      , and consent to processing of my personal data as described there.
+                      I can withdraw this consent anytime.
+                    </span>
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-3">
+                  <Checkbox
                     checked={serviceConsent}
                     onCheckedChange={(c) => setServiceConsent(c === true)}
                     className="mt-0.5"
@@ -323,9 +360,11 @@ function ApplyForm() {
                     </span>
                   </span>
                 </label>
+
                 <p className="text-xs text-muted-foreground">
                   Meta policy requires opt-in before we can send you business-initiated WhatsApp messages.
-                  Consent is recorded with a timestamp, and you can opt out at any time (e.g. by replying STOP).
+                  Consents are recorded with a timestamp and document version. You can withdraw at any time
+                  (e.g. from your profile or by replying STOP).
                 </p>
               </div>
 

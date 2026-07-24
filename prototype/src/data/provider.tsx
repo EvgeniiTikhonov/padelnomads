@@ -6,13 +6,13 @@ import type {
   User, PlayerPhoneNumber, Application, Game, GameParticipant, GameTeam, GameMatch, Offer, Club,
   AppNotification, KarmaEvent, MessageTemplate, OutboundMessage, InboundMessage,
   ImportBatch, ImportRecord, PlayerMergeLog, BanRecord, RatingAdjustment, ActivityLog,
-  ExternalPartnerInvite, CommunityInvite, PlayerReferral, MockSession, ViewRole, KarmaEventType, GameStatus, ParticipantStatus, Level,
+  ExternalPartnerInvite, CommunityInvite, PlayerReferral, ConsentRecord, GameChatMessage, DirectMessage, MockSession, ViewRole, KarmaEventType, GameStatus, ParticipantStatus, Level,
   GameFormat, SupportRequest, SupportRequestCategory, PreferredSide, Gender,
 } from '@/types';
 import { computeStandings, generateNextRoundMatches } from '@/lib/scoring';
 import {
   seedUsers, seedPhones, seedApplications, seedGames, seedParticipants, seedGameTeams, seedGameMatches,
-  seedOffers, seedClubs, seedNotifications, seedSupportRequests, seedCommunityInvites, seedPlayerReferrals, seedKarmaEvents, seedTemplates, seedOutbound,
+  seedOffers, seedClubs, seedNotifications, seedSupportRequests, seedCommunityInvites, seedPlayerReferrals, seedConsents, seedChatMessages, seedDirectMessages, seedChatReads, seedKarmaEvents, seedTemplates, seedOutbound,
   seedInbound, seedImportBatches, seedImportRecords, seedDuplicates,
   seedBanRecords, seedRatingAdjustments, seedActivityLogs, seedMergeLogs,
   type DuplicateCandidate,
@@ -23,6 +23,12 @@ import {
   playerWhatsAppUrl, communityInviteClaimUrl, communityInviteWhatsAppMessage,
   playerReferralApplyUrl, playerReferralWhatsAppMessage,
 } from '@/lib/format';
+import {
+  TERMS_AND_PRIVACY_VERSION,
+  TERMS_AND_PRIVACY_CONSENT_TEXT,
+  WHATSAPP_SERVICE_CONSENT_TEXT,
+} from '@/lib/legal';
+import { canChatInGame, gameChatReadKey, dmChatReadKey, dmThreadId, CHAT_MESSAGE_MAX_LENGTH } from '@/lib/chat';
 import { spotsTaken, fixedTeamsTaken, maxFixedTeams, isGameFull, clampFixedTeamRosters } from '@/lib/derive';
 import {
   nextWaitlistPromotions, promoteWaitlistParticipants, waitlistOrdered, waitlistPosition,
@@ -48,6 +54,7 @@ interface StoreState {
   users: User[];
   phones: PlayerPhoneNumber[];
   applications: Application[];
+  consents: ConsentRecord[];
   games: Game[];
   participants: GameParticipant[];
   teams: GameTeam[];
@@ -70,6 +77,10 @@ interface StoreState {
   externalPartnerInvites: ExternalPartnerInvite[];
   communityInvites: CommunityInvite[];
   playerReferrals: PlayerReferral[];
+  chatMessages: GameChatMessage[];
+  directMessages: DirectMessage[];
+  /** Last-read markers keyed `game:{gameId}:{userId}` or `dm:{threadId}:{userId}` → ISO. */
+  chatReads: Record<string, string>;
   /** Learned per-player strength bias from past manual court adjustments. */
   allocationBiases: Record<string, number>;
   /** Admin-editable game format catalogue. */
@@ -91,6 +102,11 @@ export interface ApplicationFormInput {
   email?: string;
   whatsappOptIn: boolean;
   whatsappMarketingOptIn: boolean;
+  /** Required: Terms + Privacy + personal-data processing consent. */
+  termsAndPrivacyAccepted: boolean;
+  termsAndPrivacyVersion: string;
+  termsAndPrivacyConsentText: string;
+  whatsappServiceConsentText: string;
 }
 
 export interface GameFormInput {
@@ -223,6 +239,11 @@ interface MockDataContextValue extends StoreState {
     contactPhone: string;
     category: SupportRequestCategory;
   }) => void;
+  // game chat + DMs
+  sendGameChatMessage: (gameId: string, body: string) => void;
+  markGameChatRead: (gameId: string) => void;
+  sendDirectMessage: (toUserId: string, body: string) => void;
+  markDirectChatRead: (otherUserId: string) => void;
   // profile
   addPhoneNumber: (userId: string, phoneNumber: string, label: string) => void;
   setWhatsappPref: (userId: string, key: 'whatsappOptIn' | 'whatsappMarketingOptIn', value: boolean) => void;
@@ -297,6 +318,7 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
     users: seedUsers,
     phones: seedPhones,
     applications: seedApplications,
+    consents: seedConsents,
     games: seedGames,
     participants: clampFixedTeamRosters(deadline.participants, seedGames),
     teams: seedGameTeams,
@@ -319,6 +341,9 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
     externalPartnerInvites: [],
     communityInvites: seedCommunityInvites,
     playerReferrals: seedPlayerReferrals,
+    chatMessages: seedChatMessages,
+    directMessages: seedDirectMessages,
+    chatReads: seedChatReads,
     allocationBiases: {},
     formatDefinitions: SEED_FORMAT_DEFINITIONS.map((d) => ({ ...d, allowedGenderModes: [...d.allowedGenderModes], boostedRounds: [...d.boostedRounds], notes: [...d.notes] })),
     session: loadSession(),
@@ -555,6 +580,7 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
         const referrer = referredByUserId
           ? state.users.find((u) => u.id === referredByUserId)
           : undefined;
+        const capturedAt = now();
         const app: Application = {
           id: nextId('a'),
           name: input.name || undefined,
@@ -566,13 +592,43 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
           proofOfSkillFileUrl: input.proofOfSkillFileUrl,
           phoneNumber: input.phoneNumber, email: input.email,
           whatsappOptIn: input.whatsappOptIn, whatsappMarketingOptIn: input.whatsappMarketingOptIn,
+          termsAndPrivacyAcceptedAt: input.termsAndPrivacyAccepted ? capturedAt : undefined,
+          termsAndPrivacyVersion: input.termsAndPrivacyAccepted
+            ? (input.termsAndPrivacyVersion || TERMS_AND_PRIVACY_VERSION)
+            : undefined,
           matchedExistingUserId: matched?.id, blacklistFlag: blacklisted,
-          status: 'pending', createdAt: now(), updatedAt: now(),
+          status: 'pending', createdAt: capturedAt, updatedAt: capturedAt,
         };
+        const consentRows: ConsentRecord[] = [];
+        if (input.termsAndPrivacyAccepted) {
+          consentRows.push({
+            id: nextId('c'),
+            applicationId: app.id,
+            type: 'terms_and_privacy',
+            granted: true,
+            documentVersion: input.termsAndPrivacyVersion || TERMS_AND_PRIVACY_VERSION,
+            consentTextSnapshot: input.termsAndPrivacyConsentText || TERMS_AND_PRIVACY_CONSENT_TEXT,
+            method: 'apply_form',
+            capturedAt,
+          });
+        }
+        if (input.whatsappOptIn) {
+          consentRows.push({
+            id: nextId('c'),
+            applicationId: app.id,
+            type: 'whatsapp_service',
+            granted: true,
+            documentVersion: TERMS_AND_PRIVACY_VERSION,
+            consentTextSnapshot: input.whatsappServiceConsentText || WHATSAPP_SERVICE_CONSENT_TEXT,
+            method: 'apply_form',
+            capturedAt,
+          });
+        }
         setState((s) => {
           let next: StoreState = {
             ...s,
             applications: [app, ...s.applications],
+            consents: [...consentRows, ...s.consents],
             session: { ...s.session, applicationStatus: 'pending' },
           };
           if (app.playerReferralId) {
@@ -2771,6 +2827,77 @@ export function MockDataProvider({ children }: { children: React.ReactNode }) {
         });
         toast.success('Support request sent', {
           description: 'An admin will contact you soon using the number you provided.',
+        });
+      },
+
+      sendGameChatMessage: (gameId, body) => {
+        const trimmed = body.trim().slice(0, CHAT_MESSAGE_MAX_LENGTH);
+        if (!trimmed) return;
+        setState((s) => {
+          const userId = s.session.currentUserId;
+          const user = s.users.find((u) => u.id === userId);
+          const game = s.games.find((g) => g.id === gameId && !g.deleted);
+          if (!user || !game) return s;
+          if (user.role !== 'admin' && !canChatInGame(s.participants, gameId, userId)) {
+            return s;
+          }
+          const at = now();
+          const message: GameChatMessage = {
+            id: nextId('gm'),
+            gameId,
+            userId,
+            body: trimmed,
+            createdAt: at,
+          };
+          return {
+            ...s,
+            chatMessages: [...s.chatMessages, message],
+            chatReads: { ...s.chatReads, [gameChatReadKey(gameId, userId)]: at },
+          };
+        });
+      },
+
+      markGameChatRead: (gameId) => {
+        setState((s) => ({
+          ...s,
+          chatReads: { ...s.chatReads, [gameChatReadKey(gameId, s.session.currentUserId)]: now() },
+        }));
+      },
+
+      sendDirectMessage: (toUserId, body) => {
+        const trimmed = body.trim().slice(0, CHAT_MESSAGE_MAX_LENGTH);
+        if (!trimmed) return;
+        setState((s) => {
+          const fromUserId = s.session.currentUserId;
+          if (fromUserId === toUserId) return s;
+          const from = s.users.find((u) => u.id === fromUserId);
+          const to = s.users.find((u) => u.id === toUserId && u.role === 'player' && u.status !== 'banned');
+          if (!from || !to) return s;
+          const at = now();
+          const message: DirectMessage = {
+            id: nextId('dm'),
+            fromUserId,
+            toUserId,
+            body: trimmed,
+            createdAt: at,
+          };
+          const threadId = dmThreadId(fromUserId, toUserId);
+          return {
+            ...s,
+            directMessages: [...s.directMessages, message],
+            chatReads: { ...s.chatReads, [dmChatReadKey(threadId, fromUserId)]: at },
+          };
+        });
+      },
+
+      markDirectChatRead: (otherUserId) => {
+        setState((s) => {
+          const userId = s.session.currentUserId;
+          const threadId = dmThreadId(userId, otherUserId);
+          return {
+            ...s,
+            chatReads: { ...s.chatReads, [dmChatReadKey(threadId, userId)]: now() },
+          };
         });
       },
 

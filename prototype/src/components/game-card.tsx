@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { CalendarDays, Clock, Lock, MapPin, Users } from 'lucide-react';
+import { CalendarDays, Clock, Lock, MapPin, MessageCircle, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { GameStatusBadge, ParticipantStatusBadge } from '@/components/badges';
@@ -11,6 +11,7 @@ import { useMockData } from '@/data/provider';
 import { spotsTaken, maxFixedTeams } from '@/lib/derive';
 import { gameJoinEligibility } from '@/lib/eligibility';
 import { LEVEL_LABELS, formatDate, isFixedTeamFormat } from '@/lib/format';
+import { unreadChatCount } from '@/lib/chat';
 import { FormatLabel } from '@/components/format-icon';
 import { cn } from '@/lib/utils';
 import type { Game } from '@/types';
@@ -30,7 +31,7 @@ export function GameCard({
   /** Show why the current user cannot join (game list). */
   showEligibility?: boolean;
 }) {
-  const { participants, currentUser, externalPartnerInvites } = useMockData();
+  const { participants, currentUser, externalPartnerInvites, chatMessages, chatReads } = useMockData();
   const taken = spotsTaken(participants, game.id, externalPartnerInvites, game.format);
   const available = Math.max(0, game.capacity - taken);
   const fixed = isFixedTeamFormat(game.format);
@@ -45,6 +46,9 @@ export function GameCard({
   );
   const highlight = showActions && mine?.status === 'confirmed' && !mine.letsGoAt;
   const eligibility = gameJoinEligibility(currentUser, game);
+  const unreadChat = mine && game.status !== 'cancelled'
+    ? unreadChatCount(chatMessages, chatReads, game.id, currentUser.id)
+    : 0;
   const blocked =
     showEligibility
     && !mine
@@ -115,6 +119,11 @@ export function GameCard({
               </Badge>
               {game.price != null && <Badge variant="outline">AED {game.price}</Badge>}
               {mine && <ParticipantStatusBadge status={mine.status} />}
+              {unreadChat > 0 && (
+                <Badge className="gap-1 bg-primary/15 text-primary">
+                  <MessageCircle className="size-3" /> {unreadChat} new
+                </Badge>
+              )}
             </div>
 
             {showEligibility && !mine && game.status === 'upcoming' && !eligibility.ok && (

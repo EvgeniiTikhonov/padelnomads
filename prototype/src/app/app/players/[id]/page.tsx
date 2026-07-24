@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, CalendarDays, MapPin, ShieldCheck, Trophy, Users } from 'lucide-react';
+import { ArrowLeft, CalendarDays, MapPin, MessageCircle, ShieldCheck, Trophy, Users } from 'lucide-react';
 import { PlayerAvatar } from '@/components/player-avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -82,8 +82,17 @@ export default function PublicPlayerProfilePage() {
           </div>
           <div className="text-right">
             {player.memberSince && <p className="text-xs text-muted-foreground">Member since {formatDate(player.memberSince)}</p>}
-            {player.id === currentUser.id && (
+            {player.id === currentUser.id ? (
               <Link href="/app/profile" className="text-xs font-medium text-primary hover:underline">Manage my profile</Link>
+            ) : currentUser.role === 'player' && (
+              <Button
+                size="sm"
+                className="mt-1 gap-1.5"
+                render={<Link href={`/app/messages/u/${player.id}`} />}
+              >
+                <MessageCircle className="size-3.5" />
+                Message
+              </Button>
             )}
           </div>
         </CardContent>

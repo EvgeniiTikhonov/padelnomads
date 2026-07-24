@@ -2,10 +2,16 @@ import type {
   User, PlayerPhoneNumber, Application, Game, GameParticipant, GameMatch, GameTeam, Offer, Club,
   AppNotification, KarmaEvent, MessageTemplate, OutboundMessage, InboundMessage,
   ImportBatch, ImportRecord, PlayerMergeLog, BanRecord, RatingAdjustment, ActivityLog,
-  SupportRequest, CommunityInvite, PlayerReferral, Level, PreferredSide, Gender, UserStatus, GameFormat, GameLeague, GameStatus,
+  SupportRequest, CommunityInvite, PlayerReferral, ConsentRecord, GameChatMessage, DirectMessage, Level, PreferredSide, Gender, UserStatus, GameFormat, GameLeague, GameStatus,
   ParticipantStatus, KarmaEventType,
 } from '@/types';
+import { gameChatReadKey, dmThreadId, dmChatReadKey } from '@/lib/chat';
 import { PREFERRED_CLUBS, karmaTierFor } from '@/lib/format';
+import {
+  TERMS_AND_PRIVACY_VERSION,
+  TERMS_AND_PRIVACY_CONSENT_TEXT,
+  WHATSAPP_SERVICE_CONSENT_TEXT,
+} from '@/lib/legal';
 import { formatConfig } from '@/lib/gameFormats';
 import { computeStandings, generateNextRoundMatches } from '@/lib/scoring';
 
@@ -436,15 +442,45 @@ for (const game of seedGames.filter((g) => g.status === 'completed')) {
 
 // ---- applications (~8) ----
 export const seedApplications: Application[] = [
-  { id: 'a1', name: 'Jonas Weber', level: 'C', preferredSide: 'right', gender: 'male', referralSource: 'friend', referrerPhoneNumber: '+971550000000', referredByUserId: 'u1', playerReferralId: 'pr1', proofOfSkillFileUrl: 'jonas_match_video.pdf', phoneNumber: '+971529001001', email: 'jonas.w@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'pending', createdAt: iso(-1), updatedAt: iso(-1) },
-  { id: 'a2', name: 'Priya Sharma', level: 'D', preferredSide: 'both', gender: 'female', referralSource: 'instagram', phoneNumber: '+971529001002', email: 'priya.s@example.com', whatsappOptIn: true, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'pending', createdAt: iso(-2), updatedAt: iso(-2) },
-  { id: 'a3', name: 'Khalid Mansour', level: 'C', preferredSide: 'left', gender: 'male', referralSource: 'event', proofOfSkillFileUrl: 'khalid_ranking.png', phoneNumber: '+971555004637', email: 'khalid.m@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, matchedExistingUserId: 'u37', blacklistFlag: false, status: 'pending', createdAt: iso(-2), updatedAt: iso(-2) },
-  { id: 'a4', name: 'Boris Lebedev', level: 'B', preferredSide: 'right', gender: 'male', referralSource: 'other', phoneNumber: '+971529001004', whatsappOptIn: true, whatsappMarketingOptIn: false, matchedExistingUserId: 'u36', blacklistFlag: true, status: 'pending', createdAt: iso(-3), updatedAt: iso(-3) },
-  { id: 'a5', name: 'Camille Laurent', level: 'B+', preferredSide: 'left', gender: 'female', referralSource: 'search', proofOfSkillFileUrl: 'camille_wpt_profile.pdf', phoneNumber: '+971529001005', email: 'camille.l@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'pending', createdAt: iso(-4), updatedAt: iso(-4) },
-  { id: 'a6', name: 'Andrei Popescu', level: 'C', preferredSide: 'both', gender: 'male', referralSource: 'facebook', phoneNumber: '+971529001006', whatsappOptIn: true, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'pending', createdAt: iso(-5), updatedAt: iso(-5) },
-  { id: 'a7', name: 'Mia Johnson', level: 'E', preferredSide: 'right', gender: 'female', referralSource: 'friend', phoneNumber: '+971529001007', email: 'mia.j@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, blacklistFlag: false, status: 'approved', reviewedBy: 'admin1', reviewedAt: iso(-6), createdAt: iso(-8), updatedAt: iso(-6) },
-  { id: 'a8', name: 'Stefan Horvat', level: 'C', preferredSide: 'left', gender: 'male', referralSource: 'instagram', phoneNumber: '+971529001008', whatsappOptIn: false, whatsappMarketingOptIn: false, blacklistFlag: false, status: 'rejected', reviewedBy: 'admin1', reviewedAt: iso(-7), createdAt: iso(-10), updatedAt: iso(-7) },
+  { id: 'a1', name: 'Jonas Weber', level: 'C', preferredSide: 'right', gender: 'male', referralSource: 'friend', referrerPhoneNumber: '+971550000000', referredByUserId: 'u1', playerReferralId: 'pr1', proofOfSkillFileUrl: 'jonas_match_video.pdf', phoneNumber: '+971529001001', email: 'jonas.w@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, termsAndPrivacyAcceptedAt: iso(-1), termsAndPrivacyVersion: TERMS_AND_PRIVACY_VERSION, blacklistFlag: false, status: 'pending', createdAt: iso(-1), updatedAt: iso(-1) },
+  { id: 'a2', name: 'Priya Sharma', level: 'D', preferredSide: 'both', gender: 'female', referralSource: 'instagram', phoneNumber: '+971529001002', email: 'priya.s@example.com', whatsappOptIn: true, whatsappMarketingOptIn: false, termsAndPrivacyAcceptedAt: iso(-2), termsAndPrivacyVersion: TERMS_AND_PRIVACY_VERSION, blacklistFlag: false, status: 'pending', createdAt: iso(-2), updatedAt: iso(-2) },
+  { id: 'a3', name: 'Khalid Mansour', level: 'C', preferredSide: 'left', gender: 'male', referralSource: 'event', proofOfSkillFileUrl: 'khalid_ranking.png', phoneNumber: '+971555004637', email: 'khalid.m@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, termsAndPrivacyAcceptedAt: iso(-2), termsAndPrivacyVersion: TERMS_AND_PRIVACY_VERSION, matchedExistingUserId: 'u37', blacklistFlag: false, status: 'pending', createdAt: iso(-2), updatedAt: iso(-2) },
+  { id: 'a4', name: 'Boris Lebedev', level: 'B', preferredSide: 'right', gender: 'male', referralSource: 'other', phoneNumber: '+971529001004', whatsappOptIn: true, whatsappMarketingOptIn: false, termsAndPrivacyAcceptedAt: iso(-3), termsAndPrivacyVersion: TERMS_AND_PRIVACY_VERSION, matchedExistingUserId: 'u36', blacklistFlag: true, status: 'pending', createdAt: iso(-3), updatedAt: iso(-3) },
+  { id: 'a5', name: 'Camille Laurent', level: 'B+', preferredSide: 'left', gender: 'female', referralSource: 'search', proofOfSkillFileUrl: 'camille_wpt_profile.pdf', phoneNumber: '+971529001005', email: 'camille.l@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, termsAndPrivacyAcceptedAt: iso(-4), termsAndPrivacyVersion: TERMS_AND_PRIVACY_VERSION, blacklistFlag: false, status: 'pending', createdAt: iso(-4), updatedAt: iso(-4) },
+  { id: 'a6', name: 'Andrei Popescu', level: 'C', preferredSide: 'both', gender: 'male', referralSource: 'facebook', phoneNumber: '+971529001006', whatsappOptIn: true, whatsappMarketingOptIn: false, termsAndPrivacyAcceptedAt: iso(-5), termsAndPrivacyVersion: TERMS_AND_PRIVACY_VERSION, blacklistFlag: false, status: 'pending', createdAt: iso(-5), updatedAt: iso(-5) },
+  { id: 'a7', name: 'Mia Johnson', level: 'E', preferredSide: 'right', gender: 'female', referralSource: 'friend', phoneNumber: '+971529001007', email: 'mia.j@example.com', whatsappOptIn: true, whatsappMarketingOptIn: true, termsAndPrivacyAcceptedAt: iso(-8), termsAndPrivacyVersion: TERMS_AND_PRIVACY_VERSION, blacklistFlag: false, status: 'approved', reviewedBy: 'admin1', reviewedAt: iso(-6), createdAt: iso(-8), updatedAt: iso(-6) },
+  { id: 'a8', name: 'Stefan Horvat', level: 'C', preferredSide: 'left', gender: 'male', referralSource: 'instagram', phoneNumber: '+971529001008', whatsappOptIn: false, whatsappMarketingOptIn: false, termsAndPrivacyAcceptedAt: iso(-10), termsAndPrivacyVersion: TERMS_AND_PRIVACY_VERSION, blacklistFlag: false, status: 'rejected', reviewedBy: 'admin1', reviewedAt: iso(-7), createdAt: iso(-10), updatedAt: iso(-7) },
 ];
+
+/** Seed consent log for applications (DIFC demonstrable consent). */
+export const seedConsents: ConsentRecord[] = seedApplications.flatMap((app, i) => {
+  const at = app.termsAndPrivacyAcceptedAt ?? app.createdAt;
+  const rows: ConsentRecord[] = [
+    {
+      id: `c${i + 1}a`,
+      applicationId: app.id,
+      type: 'terms_and_privacy',
+      granted: true,
+      documentVersion: app.termsAndPrivacyVersion ?? TERMS_AND_PRIVACY_VERSION,
+      consentTextSnapshot: TERMS_AND_PRIVACY_CONSENT_TEXT,
+      method: 'apply_form',
+      capturedAt: at,
+    },
+  ];
+  if (app.whatsappOptIn) {
+    rows.push({
+      id: `c${i + 1}b`,
+      applicationId: app.id,
+      type: 'whatsapp_service',
+      granted: true,
+      documentVersion: TERMS_AND_PRIVACY_VERSION,
+      consentTextSnapshot: WHATSAPP_SERVICE_CONSENT_TEXT,
+      method: 'apply_form',
+      capturedAt: at,
+    });
+  }
+  return rows;
+});
 
 // ---- player referrals (member → friend apply link) ----
 export const seedPlayerReferrals: PlayerReferral[] = [
@@ -471,6 +507,33 @@ export const seedPlayerReferrals: PlayerReferral[] = [
     createdAt: iso(0, 8),
   },
 ];
+
+// ---- game chat (participants align on match participation) ----
+function minutesAgo(mins: number): string {
+  return new Date(Date.now() - mins * 60000).toISOString();
+}
+
+export const seedChatMessages: GameChatMessage[] = [
+  { id: 'gm1', gameId: 'g1', userId: 'u2', body: 'Hey all! Anyone up for a warm-up 30 min before start?', createdAt: minutesAgo(180) },
+  { id: 'gm2', gameId: 'g1', userId: 'u4', body: 'I\u2019m in for the warm-up. Still looking for a partner by 8pm — anyone?', createdAt: minutesAgo(150) },
+  { id: 'gm3', gameId: 'g1', userId: 'u1', body: 'Warm-up sounds good, see you there. Sam and I are confirmed.', createdAt: minutesAgo(120) },
+  { id: 'gm4', gameId: 'g1', userId: 'u7', body: 'Heads up — traffic on SZR is heavy today, leave early!', createdAt: minutesAgo(25) },
+];
+
+export const seedDirectMessages: DirectMessage[] = [
+  { id: 'dm1', fromUserId: 'u2', toUserId: 'u1', body: 'Want to partner up for Thursday if there\u2019s a spot?', createdAt: minutesAgo(400) },
+  { id: 'dm2', fromUserId: 'u1', toUserId: 'u2', body: 'Yes! I\u2019ll register us as a full pair when the game opens.', createdAt: minutesAgo(390) },
+  { id: 'dm3', fromUserId: 'u2', toUserId: 'u1', body: 'Perfect — ping me if anything changes.', createdAt: minutesAgo(40) },
+];
+
+/** Last-read markers: u1 has unread game + DM messages. */
+export const seedChatReads: Record<string, string> = {
+  [gameChatReadKey('g1', 'u1')]: minutesAgo(120),
+  [gameChatReadKey('g1', 'u2')]: minutesAgo(20),
+  [gameChatReadKey('g1', 'u4')]: minutesAgo(20),
+  [dmChatReadKey(dmThreadId('u1', 'u2'), 'u2')]: minutesAgo(30),
+  [dmChatReadKey(dmThreadId('u1', 'u2'), 'u1')]: minutesAgo(390),
+};
 
 // ---- clubs (partner venues) ----
 export const seedClubs: Club[] = [
